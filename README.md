@@ -1,5 +1,6 @@
 # DataMind
 
+
 An Autonomous AI-Powered Data Intelligence Platform
 
 *Transform raw data into forensic insights and strategic forecasts — without writing a single line of code.*
