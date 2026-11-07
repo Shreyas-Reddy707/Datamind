@@ -74,6 +74,11 @@ async def run_prediction_mission_endpoint(
     task_type = request.task_type or await asyncio.to_thread(UniversalMLRunner.auto_select_task, df, target_col)
 
     # 2. Smart Cache Check (Avoid redundant re-training on static Parquet)
+    # Lock the user_file row to ensure atomic check-and-create across concurrent requests
+    await db.execute(
+        select(UserFile.id).where(UserFile.id == user_file.id).with_for_update()
+    )
+
     cache_stmt = (
         select(PredictionHistory)
         .where(
@@ -114,7 +119,11 @@ async def run_prediction_mission_endpoint(
             target_col,
         )
     except Exception as e:
-        logger.debug("Taskiq background queue dispatch skipped: %s", e)
+        logger.error("Taskiq background queue dispatch failed for prediction %s: %s", record.id, e)
+        record.status = "failed"
+        record.diagnostics_json = {**(diag or {}), "dispatch_error": str(e)}
+        await db.commit()
+        await db.refresh(record)
 
     return record
 

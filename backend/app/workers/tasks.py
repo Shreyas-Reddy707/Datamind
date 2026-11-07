@@ -30,17 +30,17 @@ def _execute_ml_benchmark_sync(
     """Synchronous CPU-bound pipeline: Parquet read, diagnostic checks, preprocessing, CV & fit."""
     df = pd.read_parquet(parquet_path)
 
-    task_type = UniversalMLRunner.auto_select_task(df, target_col)
     diag = UniversalMLRunner.diagnose_data(df, target_col)
+    final_target = target_col or diag.get("suggested_target")
+    task_type = UniversalMLRunner.auto_select_task(df, final_target)
     if not diag["can_proceed"]:
         return {
             "can_proceed": False,
             "task_type": task_type,
-            "target_col": target_col,
+            "target_col": final_target,
             "diagnostics": diag,
         }
 
-    final_target = target_col or diag.get("suggested_target")
     prep = UniversalMLRunner.preprocess(df, final_target, task_type)
 
     if task_type == "classification":
