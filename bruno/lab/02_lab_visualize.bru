@@ -1,0 +1,33 @@
+meta {
+  name: 02_lab_visualize
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/v1/lab/{{fileId}}/visualize
+  body: json
+  auth: bearer
+}
+
+headers {
+  Content-Type: application/json
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {
+    "chart_type": "distribution",
+    "column": "revenue"
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.data: isDefined
+  res.body.layout: isDefined
+}
+

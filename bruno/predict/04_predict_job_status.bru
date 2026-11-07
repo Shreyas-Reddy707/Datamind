@@ -1,0 +1,22 @@
+meta {
+  name: 04_predict_job_status
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/api/v1/predict/{{fileId}}/jobs/{{predictionId}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+assert {
+  res.status: eq 200
+  res.body.id: isDefined
+  res.body.status: isString
+}
+

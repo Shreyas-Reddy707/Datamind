@@ -1,0 +1,31 @@
+meta {
+  name: 03_pattern_feedback
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/v1/chat/patterns/{{patternId}}/feedback
+  body: json
+  auth: bearer
+}
+
+headers {
+  Content-Type: application/json
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {
+    "is_helpful": true
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.confidence_score: isNumber
+}
+

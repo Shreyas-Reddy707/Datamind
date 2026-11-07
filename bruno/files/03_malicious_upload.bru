@@ -1,0 +1,25 @@
+meta {
+  name: 03_malicious_upload
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/v1/files/upload
+  body: multipartForm
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:multipart-form {
+  file: @file(malicious_payload.exe)
+}
+
+assert {
+  res.status: in [400, 422]
+  res.body.error_code: in [FILE_VALIDATION_FAILED, UPLOAD_STREAM_ERROR]
+}
+

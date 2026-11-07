@@ -1,0 +1,23 @@
+meta {
+  name: 03_rate_limit
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/v1/auth/login
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "email": "brute_force_target@datamind.local",
+    "password": "WrongPasswordAttempt!"
+  }
+}
+
+assert {
+  res.status: in [401, 403, 429]
+}
+

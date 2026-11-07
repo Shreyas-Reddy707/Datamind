@@ -1,0 +1,32 @@
+meta {
+  name: 03_lab_analyze
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/v1/lab/{{fileId}}/analyze
+  body: json
+  auth: bearer
+}
+
+headers {
+  Content-Type: application/json
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {
+    "query": "Evaluate revenue trends across product lines"
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.finding_text: isDefined
+  res.body.agent_type: eq analyst
+}
+

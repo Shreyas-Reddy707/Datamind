@@ -1,0 +1,255 @@
+"""DataMind v2 Content-Addressed Parquet Ingestor.
+
+Deduplicates datasets by SHA256 digest, validates with UploadGuard, extracts
+schematic metadata, detects domain heuristics, and converts to Parquet.
+"""
+
+from __future__ import annotations
+
+import csv
+import hashlib
+import io
+import logging
+import os
+from typing import Any
+
+import chardet
+import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.config import settings
+from app.models.file import GlobalFile, UserFile
+from app.security.sanitizer import InputSanitizer
+from app.security.upload_guard import UploadGuard
+
+logger = logging.getLogger("datamind.engine.ingestor")
+
+PII_KEYWORDS = [
+    "email",
+    "phone",
+    "ssn",
+    "dob",
+    "salary",
+    "address",
+    "national_id",
+    "passport",
+    "credit_card",
+    "account_number",
+    "mobile",
+]
+
+
+class ParquetIngestor:
+    """Streams and converts multi-format datasets into content-addressed Parquet files."""
+
+    @staticmethod
+    def compute_sha256(data: bytes) -> str:
+        """Compute SHA256 hex digest for deduplication."""
+        return hashlib.sha256(data).hexdigest()
+
+    @staticmethod
+    def detect_domain(column_names: list[str]) -> str:
+        """Autonomous domain discovery based on column names and semantic keywords."""
+        full_text = " ".join(column_names).lower()
+        if any(
+            x in full_text
+            for x in ["price", "revenue", "sale", "cost", "invoice", "profit", "margin", "tax"]
+        ):
+            return "finance"
+        if any(
+            x in full_text
+            for x in ["patient", "diagnosis", "doctor", "health", "symptom", "blood", "medical"]
+        ):
+            return "health"
+        if any(
+            x in full_text
+            for x in ["customer", "order", "sku", "cart", "product", "inventory", "checkout"]
+        ):
+            return "ecommerce"
+        if any(
+            x in full_text
+            for x in ["employee", "salary", "hiring", "leave", "department", "tenure"]
+        ):
+            return "hr"
+        if any(
+            x in full_text
+            for x in ["shipment", "warehouse", "tracking", "carrier", "freight", "logistics"]
+        ):
+            return "logistics"
+        if any(
+            x in full_text
+            for x in ["student", "grade", "course", "gpa", "exam", "enrollment", "score"]
+        ):
+            return "education"
+        return "generic"
+
+    @staticmethod
+    def load_dataframe_from_bytes(file_bytes: bytes, filename: str) -> pd.DataFrame:
+        """Load DataFrame from in-memory bytes with auto-encoding and delimiter detection."""
+        ext = os.path.splitext(filename)[1].lower()
+
+        if ext == ".csv":
+            raw_sample = file_bytes[:10000]
+            enc_result = chardet.detect(raw_sample)
+            encoding = enc_result["encoding"] or "utf-8"
+            try:
+                snippet = file_bytes[:2048].decode(encoding)
+                sniffer = csv.Sniffer()
+                dialect = sniffer.sniff(snippet)
+                delimiter = dialect.delimiter
+            except Exception:
+                delimiter = ","
+            df = pd.read_csv(io.BytesIO(file_bytes), encoding=encoding, sep=delimiter)
+
+        elif ext in (".xlsx", ".xls"):
+            df = pd.read_excel(io.BytesIO(file_bytes))
+
+        elif ext == ".json":
+            df = pd.read_json(io.BytesIO(file_bytes))
+
+        elif ext == ".parquet":
+            df = pd.read_parquet(io.BytesIO(file_bytes))
+
+        else:
+            raise ValueError(f"Unsupported file format: {ext}")
+
+        return df
+
+    @classmethod
+    def extract_schema_metadata(cls, df: pd.DataFrame) -> dict[str, Any]:
+        """Generate schema metadata, type tagging, and PII masking."""
+        cols_meta: dict[str, Any] = {}
+        pii_columns: list[str] = []
+
+        for col in df.columns:
+            dtype_label = "text"
+            if pd.api.types.is_numeric_dtype(df[col]):
+                dtype_label = "numeric"
+            elif pd.api.types.is_datetime64_any_dtype(df[col]):
+                dtype_label = "datetime"
+            elif pd.api.types.is_bool_dtype(df[col]):
+                dtype_label = "boolean"
+
+            unique_count = int(df[col].nunique(dropna=True))
+            if unique_count == len(df) and len(df) > 50:
+                dtype_label = "id_like"
+
+            is_pii = any(k in col.lower() for k in PII_KEYWORDS)
+            if is_pii:
+                pii_columns.append(col)
+
+            # Sample values with PII redaction
+            raw_samples = df[col].dropna().head(3).tolist()
+            if is_pii:
+                sample_values = ["[REDACTED]"] * len(raw_samples)
+            else:
+                sample_values = [str(x)[:100] for x in raw_samples]
+
+            cols_meta[col] = {
+                "dtype": dtype_label,
+                "null_pct": float(df[col].isnull().mean() * 100),
+                "unique_count": unique_count,
+                "sample_values": sample_values,
+                "is_pii": is_pii,
+            }
+
+        domain = cls.detect_domain(list(df.columns))
+        return {
+            "columns": cols_meta,
+            "row_count": len(df),
+            "col_count": len(df.columns),
+            "detected_domain": domain,
+            "pii_detected": len(pii_columns) > 0,
+            "pii_columns": pii_columns,
+        }
+
+    @classmethod
+    async def ingest_file(
+        cls,
+        file_bytes: bytes,
+        original_filename: str,
+        user_id: Any,
+        org_id: Any,
+        db: AsyncSession,
+    ) -> tuple[UserFile, GlobalFile, bool]:
+        """
+        Transactional ingestion: checks pre-read guard, computes SHA-256,
+        locks global_files row with FOR UPDATE, persists single on-disk Parquet,
+        and provisions user_files reference.
+        """
+        clean_filename = InputSanitizer.sanitize_filename(original_filename)
+        pre_val = UploadGuard.validate_before_read(file_bytes, clean_filename)
+        if not pre_val["safe"]:
+            raise ValueError(pre_val["error"])
+
+        sha256 = cls.compute_sha256(file_bytes)
+        os.makedirs(settings.UPLOADS_DIR, exist_ok=True)
+        parquet_rel_path = os.path.join(settings.UPLOADS_DIR, f"{sha256}.parquet").replace(
+            "\\", "/"
+        )
+
+        # 1. Atomic Check & Lock on global_files
+        stmt = select(GlobalFile).where(GlobalFile.sha256_hash == sha256).with_for_update()
+        result = await db.execute(stmt)
+        global_file = result.scalar_one_or_none()
+        is_deduplicated = False
+
+        if global_file is not None:
+            global_file.ref_count += 1
+            is_deduplicated = True
+        else:
+            # Parse dataset
+            df = cls.load_dataframe_from_bytes(file_bytes, clean_filename)
+            post_val = UploadGuard.validate_after_read(df, clean_filename)
+            if not post_val["safe"]:
+                raise ValueError(post_val["error"])
+
+            # Sanitize columns
+            df, _ = InputSanitizer.sanitize_column_names(df)
+            schema_info = cls.extract_schema_metadata(df)
+
+            # Convert to PyArrow table & write Parquet
+            arrow_table = pa.Table.from_pandas(df)
+            pq.write_table(arrow_table, parquet_rel_path, compression="zstd")
+
+            ext = os.path.splitext(clean_filename)[1].lstrip(".").lower()
+            global_file = GlobalFile(
+                sha256_hash=sha256,
+                parquet_path=parquet_rel_path,
+                original_format=ext,
+                file_size_bytes=len(file_bytes),
+                row_count=len(df),
+                col_count=len(df.columns),
+                schema_json=schema_info,
+                detected_domain=schema_info["detected_domain"],
+                ref_count=1,
+            )
+            db.add(global_file)
+            await db.flush()
+
+        # 2. Check if UserFile already exists for (user_id, global_file.id, clean_filename)
+        user_file_stmt = select(UserFile).where(
+            UserFile.user_id == user_id,
+            UserFile.global_file_id == global_file.id,
+            UserFile.display_name == clean_filename,
+        )
+        existing_uf = (await db.execute(user_file_stmt)).scalar_one_or_none()
+        if existing_uf:
+            await db.commit()
+            return existing_uf, global_file, is_deduplicated
+
+        user_file = UserFile(
+            user_id=user_id,
+            org_id=org_id,
+            global_file_id=global_file.id,
+            display_name=clean_filename,
+        )
+        db.add(user_file)
+        await db.commit()
+        await db.refresh(user_file)
+        await db.refresh(global_file)
+
+        return user_file, global_file, is_deduplicated

@@ -1,0 +1,22 @@
+meta {
+  name: 01_upload_and_list
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/v1/files?limit=20&offset=0
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+assert {
+  res.status: eq 200
+  res.body.items: isDefined
+  res.body.total: isNumber
+}
+

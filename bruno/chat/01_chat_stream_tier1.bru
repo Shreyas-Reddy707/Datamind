@@ -1,0 +1,31 @@
+meta {
+  name: 01_chat_stream_tier1
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/v1/chat/{{fileId}}/stream
+  body: json
+  auth: bearer
+}
+
+headers {
+  Content-Type: application/json
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {
+    "query": "how many rows in dataset"
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.headers["content-type"]: contains text/event-stream
+}
+

@@ -1,0 +1,32 @@
+meta {
+  name: 02_predict_run
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/v1/predict/{{fileId}}/run
+  body: json
+  auth: bearer
+}
+
+headers {
+  Content-Type: application/json
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {
+    "target_col": "revenue"
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.id: isDefined
+  res.body.status: isString
+}
+

@@ -1,0 +1,22 @@
+meta {
+  name: 04_lab_export_pdf
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/api/v1/lab/{{fileId}}/export-pdf
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+assert {
+  res.status: eq 200
+  res.body.markdown_report: isDefined
+  res.body.filename: isDefined
+}
+

@@ -1,0 +1,22 @@
+meta {
+  name: 01_lab_overview
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/v1/lab/{{fileId}}/overview
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+assert {
+  res.status: eq 200
+  res.body.file_id: isDefined
+  res.body.schema: isDefined
+}
+

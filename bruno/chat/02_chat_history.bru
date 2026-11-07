@@ -1,0 +1,21 @@
+meta {
+  name: 02_chat_history
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/v1/chat/{{fileId}}/history?limit=50&offset=0
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+assert {
+  res.status: eq 200
+  res.body: isArray
+}
+

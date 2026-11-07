@@ -1,0 +1,26 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.6
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+      - id: ruff-format
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks
+
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.8.0
+    hooks:
+      - id: bandit
+        args: ["-c", "pyproject.toml", "-r", "backend/app"]
+        additional_dependencies: ["bandit[toml]"]
+
+  - repo: https://github.com/robert-craigie/pyright-python
+    rev: v1.1.391
+    hooks:
+      - id: pyright
+        additional_dependencies: ["pydantic", "fastapi", "sqlalchemy"]
+

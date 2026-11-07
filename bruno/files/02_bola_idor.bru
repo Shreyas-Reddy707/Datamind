@@ -1,0 +1,21 @@
+meta {
+  name: 02_bola_idor
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/v1/files/00000000-0000-0000-0000-000000000000
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{userBToken}}
+}
+
+assert {
+  res.status: eq 404
+  res.body.error_code: eq RESOURCE_NOT_FOUND
+}
+

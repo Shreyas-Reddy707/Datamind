@@ -1,0 +1,30 @@
+meta {
+  name: 03_predict_invalid_target
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/v1/predict/{{fileId}}/run
+  body: json
+  auth: bearer
+}
+
+headers {
+  Content-Type: application/json
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {
+    "target_col": "non_existent_column_xyz"
+  }
+}
+
+assert {
+  res.status: eq 422
+}
+

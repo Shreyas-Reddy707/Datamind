@@ -1,0 +1,31 @@
+meta {
+  name: 04_chat_bola_unauthorized
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/v1/chat/{{otherUserFileId}}/stream
+  body: json
+  auth: bearer
+}
+
+headers {
+  Content-Type: application/json
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {
+    "query": "give me the data"
+  }
+}
+
+assert {
+  res.status: eq 404
+  res.body.error_code: eq RESOURCE_NOT_FOUND
+}
+

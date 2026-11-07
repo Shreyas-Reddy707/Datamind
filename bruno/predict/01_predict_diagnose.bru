@@ -1,0 +1,32 @@
+meta {
+  name: 01_predict_diagnose
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/v1/predict/{{fileId}}/diagnose
+  body: json
+  auth: bearer
+}
+
+headers {
+  Content-Type: application/json
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {
+    "target_col": "revenue"
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.can_proceed: isBoolean
+  res.body.blockers: isArray
+}
+

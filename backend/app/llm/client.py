@@ -1,0 +1,212 @@
+"""DataMind v2 Async LiteLLM Client.
+
+Cost-first model router defaulting to local ollama/qwen2.5-coder:7b with
+configurable cloud fallbacks, exponential backoff retries, token usage tracking,
+and deterministic 768-dimensional embeddings matching Vector(768).
+"""
+
+from __future__ import annotations
+
+import asyncio
+import hashlib
+import logging
+import math
+import os
+from collections.abc import AsyncGenerator
+from typing import Any
+
+# Crucial: Disable LiteLLM external network probes & telemetry BEFORE importing litellm
+os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
+os.environ["DISABLE_TELEMETRY"] = "TRUE"
+os.environ["LITELLM_TELEMETRY"] = "False"
+
+import litellm
+from litellm import acompletion
+
+from app.config import settings
+
+logger = logging.getLogger("datamind.llm.client")
+
+litellm.telemetry = False
+litellm.drop_params = True
+
+
+class LLMClient:
+    """Async client managing cost-first LLM completions and embeddings."""
+
+    def __init__(
+        self,
+        default_model: str | None = None,
+        base_url: str | None = None,
+        quick_timeout: int = 15,
+        deep_timeout: int = 45,
+    ):
+        raw_model = default_model or settings.OLLAMA_MODEL
+        # Ensure ollama/ prefix for LiteLLM if not present
+        if not raw_model.startswith(("ollama/", "openai/", "anthropic/", "gemini/")):
+            self.default_model = f"ollama/{raw_model}"
+        else:
+            self.default_model = raw_model
+
+        self.base_url = base_url or settings.OLLAMA_BASE_URL
+        self.quick_timeout = quick_timeout
+        self.deep_timeout = deep_timeout
+
+    async def chat_completion(
+        self,
+        messages: list[dict[str, str]],
+        model: str | None = None,
+        temperature: float = 0.2,
+        max_tokens: int = 2048,
+        timeout: int | None = None,
+        max_retries: int = 2,
+    ) -> dict[str, Any]:
+        """Execute chat completion with exponential backoff and token tracking."""
+        target_model = model or self.default_model
+        req_timeout = timeout or self.quick_timeout
+
+        last_error = None
+        for attempt in range(max_retries + 1):
+            try:
+                extra_kwargs = {}
+                if target_model.startswith("ollama/"):
+                    extra_kwargs["api_base"] = self.base_url
+
+                response = await asyncio.wait_for(
+                    acompletion(
+                        model=target_model,
+                        messages=messages,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        **extra_kwargs,
+                    ),
+                    timeout=req_timeout,
+                )
+
+                content = response.choices[0].message.content or ""
+                usage = getattr(response, "usage", None)
+                tokens_info = {
+                    "prompt_tokens": getattr(usage, "prompt_tokens", 0) if usage else 0,
+                    "completion_tokens": getattr(usage, "completion_tokens", 0) if usage else 0,
+                    "total_tokens": getattr(usage, "total_tokens", 0) if usage else 0,
+                }
+
+                return {
+                    "content": content,
+                    "model": target_model,
+                    "tokens": tokens_info,
+                    "finish_reason": response.choices[0].finish_reason,
+                }
+            except Exception as e:
+                last_error = e
+                logger.warning(
+                    "LLM chat attempt %d failed for %s: %s",
+                    attempt + 1,
+                    target_model,
+                    str(e),
+                )
+                if attempt < max_retries:
+                    await asyncio.sleep(0.5 * (2**attempt))
+
+        # Graceful degradation / offline fallback
+        logger.error("All LLM attempts failed for %s. Generating deterministic brief.", target_model)
+        return {
+            "content": f"Analytical note: Query processed under offline mode. Error: {str(last_error)}",
+            "model": "offline-fallback",
+            "tokens": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+            "finish_reason": "fallback",
+        }
+
+    async def stream_chat_completion(
+        self,
+        messages: list[dict[str, str]],
+        model: str | None = None,
+        temperature: float = 0.2,
+        max_tokens: int = 2048,
+        timeout: int | None = None,
+    ) -> AsyncGenerator[str, None]:
+        """Stream chat tokens asynchronously for Server-Sent Events (SSE)."""
+        target_model = model or self.default_model
+        req_timeout = timeout or self.deep_timeout
+
+        extra_kwargs = {}
+        if target_model.startswith("ollama/"):
+            extra_kwargs["api_base"] = self.base_url
+
+        try:
+            response = await asyncio.wait_for(
+                acompletion(
+                    model=target_model,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    stream=True,
+                    **extra_kwargs,
+                ),
+                timeout=req_timeout,
+            )
+
+            async for chunk in response:
+                delta = chunk.choices[0].delta.content or ""
+                if delta:
+                    yield delta
+        except Exception as e:
+            logger.warning("Streaming failed for %s: %s. Yielding fallback.", target_model, e)
+            yield f"\n[Analysis completed with offline fallback: {str(e)}]"
+
+    async def get_embedding(self, text: str) -> list[float]:
+        """
+        Generate 768-dimensional normalized embedding matching Vector(768).
+        Tries local Ollama/LiteLLM first; falls back to deterministic hash projection.
+        """
+        clean_text = text.strip()
+        if not clean_text:
+            return [0.0] * 768
+
+        try:
+            # Attempt LiteLLM / Ollama embedding
+            emb_model = f"ollama/{settings.EMBEDDING_MODEL}"
+            resp = await asyncio.wait_for(
+                litellm.aembedding(
+                    model=emb_model,
+                    input=[clean_text],
+                    api_base=self.base_url,
+                ),
+                timeout=5,
+            )
+            raw_vec = resp.data[0]["embedding"]
+            if len(raw_vec) == 768:
+                return self._normalize_vector(raw_vec)
+        except Exception as exc:
+            logger.debug("Ollama embedding unavailable (%s), falling back to projection", exc)
+
+        # Deterministic 768-D pseudo-random projection based on SHA-256 + sha512 seeds
+        return self.generate_deterministic_embedding(clean_text, dimensions=768)
+
+    @staticmethod
+    def _normalize_vector(vec: list[float]) -> list[float]:
+        """L2-normalize vector to unit length."""
+        norm = math.sqrt(sum(x * x for x in vec))
+        if norm == 0:
+            return vec
+        return [x / norm for x in vec]
+
+    @classmethod
+    def generate_deterministic_embedding(cls, text: str, dimensions: int = 768) -> list[float]:
+        """Generate high-entropy, deterministic normalized embedding vector."""
+        vec: list[float] = []
+        base_bytes = text.encode("utf-8")
+        # Generate dimensions float coordinates using rotating hash seeds
+        chunks_needed = math.ceil(dimensions / 16)  # 64 bytes per sha512 = 16 floats (4 bytes each)
+        for i in range(chunks_needed):
+            hasher = hashlib.sha512(base_bytes + i.to_bytes(4, byteorder="big"))
+            digest = hasher.digest()
+            for j in range(0, 64, 4):
+                if len(vec) < dimensions:
+                    val = int.from_bytes(digest[j : j + 4], byteorder="big", signed=True)
+                    vec.append(float(val) / 2147483648.0)
+
+        return cls._normalize_vector(vec)
+
+
+llm_client = LLMClient()
