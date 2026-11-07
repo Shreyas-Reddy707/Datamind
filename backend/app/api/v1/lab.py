@@ -6,6 +6,7 @@ dynamic Plotly chart spec builder, and executive report export.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 
@@ -42,13 +43,14 @@ async def get_lab_overview_endpoint(
 ):
     """Retrieve comprehensive dataset intelligence dossier, schema, and health scores."""
     gf = user_file.global_file
+    profile = await asyncio.to_thread(DuckDBManager.generate_data_profile, gf.parquet_path)
     return {
         "file_id": str(user_file.id),
         "filename": user_file.display_name,
         "row_count": gf.row_count,
         "column_count": gf.col_count,
         "schema": gf.schema_json,
-        "profile": DuckDBManager.generate_data_profile(gf.parquet_path),
+        "profile": profile,
         "ref_count": gf.ref_count,
     }
 
@@ -62,7 +64,7 @@ async def generate_chart_spec_endpoint(
 ):
     """Generate dynamic dark-mode Plotly chart specification based on requested dimensions."""
     gf = user_file.global_file
-    df = pd.read_parquet(gf.parquet_path)
+    df = await asyncio.to_thread(pd.read_parquet, gf.parquet_path)
     ctype = request.chart_type.lower().strip()
 
     spec = None
@@ -226,7 +228,7 @@ async def export_lab_report_endpoint(
     )
     preds = (await db.scalars(preds_stmt)).all()
 
-    profile = DuckDBManager.generate_data_profile(gf.parquet_path)
+    profile = await asyncio.to_thread(DuckDBManager.generate_data_profile, gf.parquet_path)
     md_lines = [
         f"# DataMind Executive Intelligence Dossier: {user_file.display_name}",
         f"**Dataset Scope**: {gf.row_count:,} rows | {gf.col_count} columns",

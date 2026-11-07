@@ -71,8 +71,9 @@ class ChartBuilder:
             return None
 
         if pd.api.types.is_numeric_dtype(df[column]):
+            sample_df = df.sample(min(len(df), 2000), random_state=42) if len(df) > 2000 else df
             fig = px.histogram(
-                df,
+                sample_df,
                 x=column,
                 nbins=30,
                 color_discrete_sequence=["#10B981"],
@@ -122,8 +123,9 @@ class ChartBuilder:
             return None
 
         clean_df = df[[date_col, value_col]].dropna().sort_values(by=date_col)
+        sample_df = clean_df.sample(min(len(clean_df), 2000), random_state=42).sort_values(by=date_col) if len(clean_df) > 2000 else clean_df
         fig = px.line(
-            clean_df,
+            sample_df,
             x=date_col,
             y=value_col,
             color_discrete_sequence=["#10B981"],
@@ -188,8 +190,9 @@ class ChartBuilder:
         if numeric_col not in df.columns:
             return None
 
+        sample_df = df.sample(min(len(df), 2000), random_state=42) if len(df) > 2000 else df
         fig = px.box(
-            df,
+            sample_df,
             y=numeric_col,
             x=category_col if category_col in df.columns else None,
             color=category_col if category_col in df.columns else None,

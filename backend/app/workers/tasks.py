@@ -5,6 +5,7 @@ Background workers for AutoML model training and self-learning pattern extractio
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from typing import Any
@@ -20,6 +21,55 @@ from app.models.prediction import PredictionHistory
 from app.workers.broker import broker
 
 logger = logging.getLogger("datamind.workers.tasks")
+
+
+def _execute_ml_benchmark_sync(
+    parquet_path: str,
+    target_col: str | None = None,
+) -> dict[str, Any]:
+    """Synchronous CPU-bound pipeline: Parquet read, diagnostic checks, preprocessing, CV & fit."""
+    df = pd.read_parquet(parquet_path)
+
+    task_type = UniversalMLRunner.auto_select_task(df, target_col)
+    diag = UniversalMLRunner.diagnose_data(df, target_col)
+    if not diag["can_proceed"]:
+        return {
+            "can_proceed": False,
+            "task_type": task_type,
+            "target_col": target_col,
+            "diagnostics": diag,
+        }
+
+    final_target = target_col or diag.get("suggested_target")
+    prep = UniversalMLRunner.preprocess(df, final_target, task_type)
+
+    if task_type == "classification":
+        results = UniversalMLRunner.run_classification(
+            prep["X_train"],
+            prep["X_test"],
+            prep["y_train"],
+            prep["y_test"],
+            prep["feature_names"],
+        )
+    elif task_type == "regression":
+        results = UniversalMLRunner.run_regression(
+            prep["X_train"],
+            prep["X_test"],
+            prep["y_train"],
+            prep["y_test"],
+            prep["feature_names"],
+        )
+    else:
+        results = UniversalMLRunner.run_clustering(df, prep["feature_names"])
+
+    return {
+        "can_proceed": True,
+        "task_type": task_type,
+        "target_col": final_target,
+        "diagnostics": diag,
+        "feature_names": prep["feature_names"],
+        "results": results,
+    }
 
 
 @broker.task
@@ -49,45 +99,23 @@ async def run_ml_benchmark_task(
         await db.commit()
 
         try:
-            # Load dataset from Parquet storage
-            df = pd.read_parquet(global_file.parquet_path)
+            bench_res = await asyncio.to_thread(
+                _execute_ml_benchmark_sync,
+                global_file.parquet_path,
+                target_col,
+            )
 
-            # Auto-detect task
-            task_type = UniversalMLRunner.auto_select_task(df, target_col)
-            pred_record.task_type = task_type
-            pred_record.target_column = target_col
+            pred_record.task_type = bench_res["task_type"]
+            pred_record.target_column = bench_res["target_col"]
+            pred_record.diagnostics_json = bench_res["diagnostics"]
 
-            # Diagnose
-            diag = UniversalMLRunner.diagnose_data(df, target_col)
-            pred_record.diagnostics_json = diag
-            if not diag["can_proceed"]:
+            if not bench_res["can_proceed"]:
                 pred_record.status = "failed"
                 await db.commit()
-                return {"status": "failed", "blockers": diag["blockers"]}
+                return {"status": "failed", "blockers": bench_res["diagnostics"]["blockers"]}
 
-            final_target = target_col or diag.get("suggested_target")
-            prep = UniversalMLRunner.preprocess(df, final_target, task_type)
-            pred_record.feature_columns = prep["feature_names"]
-
-            if task_type == "classification":
-                results = UniversalMLRunner.run_classification(
-                    prep["X_train"],
-                    prep["X_test"],
-                    prep["y_train"],
-                    prep["y_test"],
-                    prep["feature_names"],
-                )
-            elif task_type == "regression":
-                results = UniversalMLRunner.run_regression(
-                    prep["X_train"],
-                    prep["X_test"],
-                    prep["y_train"],
-                    prep["y_test"],
-                    prep["feature_names"],
-                )
-            else:
-                results = UniversalMLRunner.run_clustering(df, prep["feature_names"])
-
+            results = bench_res["results"]
+            pred_record.feature_columns = bench_res["feature_names"]
             pred_record.best_model_name = results.get("best_model_name")
             pred_record.leaderboard_json = {
                 "leaderboard": results.get("leaderboard", []),

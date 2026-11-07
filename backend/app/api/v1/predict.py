@@ -6,6 +6,7 @@ and polling endpoints for Taskiq background workers.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 
@@ -41,8 +42,8 @@ async def diagnose_ml_viability_endpoint(
 ):
     """Evaluate dataset feasibility for machine learning missions."""
     gf = user_file.global_file
-    df = pd.read_parquet(gf.parquet_path)
-    res = UniversalMLRunner.diagnose_data(df, request.target_col)
+    df = await asyncio.to_thread(pd.read_parquet, gf.parquet_path)
+    res = await asyncio.to_thread(UniversalMLRunner.diagnose_data, df, request.target_col)
     return res
 
 
@@ -59,10 +60,10 @@ async def run_prediction_mission_endpoint(
     Checks smart cache for identical completed runs before enqueuing background Taskiq worker.
     """
     gf = user_file.global_file
-    df = pd.read_parquet(gf.parquet_path)
+    df = await asyncio.to_thread(pd.read_parquet, gf.parquet_path)
 
     # 1. Diagnose viability
-    diag = UniversalMLRunner.diagnose_data(df, request.target_col)
+    diag = await asyncio.to_thread(UniversalMLRunner.diagnose_data, df, request.target_col)
     if not diag["can_proceed"]:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -70,19 +71,24 @@ async def run_prediction_mission_endpoint(
         )
 
     target_col = request.target_col or diag.get("suggested_target")
-    task_type = request.task_type or UniversalMLRunner.auto_select_task(df, target_col)
+    task_type = request.task_type or await asyncio.to_thread(UniversalMLRunner.auto_select_task, df, target_col)
 
     # 2. Smart Cache Check (Avoid redundant re-training on static Parquet)
-    cache_stmt = select(PredictionHistory).where(
-        PredictionHistory.user_file_id == user_file.id,
-        PredictionHistory.user_id == current_user.id,
-        PredictionHistory.target_column == target_col,
-        PredictionHistory.task_type == task_type,
-        PredictionHistory.status == "completed",
+    cache_stmt = (
+        select(PredictionHistory)
+        .where(
+            PredictionHistory.user_file_id == user_file.id,
+            PredictionHistory.user_id == current_user.id,
+            PredictionHistory.target_column == target_col,
+            PredictionHistory.task_type == task_type,
+            PredictionHistory.status.in_(["queued", "running", "completed"]),
+        )
+        .order_by(PredictionHistory.created_at.desc())
+        .limit(1)
     )
     cached_run = await db.scalar(cache_stmt)
     if cached_run:
-        logger.info("Reusing existing completed ML benchmark run %s", cached_run.id)
+        logger.info("Reusing existing %s ML benchmark run %s", cached_run.status, cached_run.id)
         return cached_run
 
     # 3. Create Queued Record
