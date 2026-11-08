@@ -1,13 +1,23 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Cpu, Database, HardDrive, Shield } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 
 export default function SettingsPage() {
-  const [memoryLimit, setMemoryLimit] = useState("512MB");
-  const [threads, setThreads] = useState("2");
   const [enable3D, setEnable3D] = useState(true);
+
+  useEffect(() => {
+    const saved = localStorage.getItem("datamind_enable_3d");
+    if (saved !== null) {
+      setEnable3D(saved === "true");
+    }
+  }, []);
+
+  const handleToggle3D = (checked: boolean) => {
+    setEnable3D(checked);
+    localStorage.setItem("datamind_enable_3d", String(checked));
+  };
 
   return (
     <div className="min-h-screen bg-[#09090B] text-zinc-100 p-8 max-w-3xl mx-auto space-y-6">
@@ -32,11 +42,11 @@ export default function SettingsPage() {
               In-Memory Cache Ceiling
             </span>
             <span className="text-zinc-500 text-[11px]">
-              Maximum RAM allocated per active DuckDB analytical worker
+              Allocated RAM per active DuckDB analytical worker (Server Configured)
             </span>
           </div>
           <span className="px-2.5 py-1 rounded bg-zinc-900 border border-zinc-800 text-emerald-400 font-semibold">
-            {memoryLimit}
+            512MB
           </span>
         </div>
 
@@ -46,32 +56,32 @@ export default function SettingsPage() {
               Execution Threads
             </span>
             <span className="text-zinc-500 text-[11px]">
-              Worker thread concurrency for Parquet scans
+              Worker thread concurrency for Parquet scans (Server Configured)
             </span>
           </div>
           <span className="px-2.5 py-1 rounded bg-zinc-900 border border-zinc-800 text-cyan-400 font-semibold">
-            {threads} Threads
+            2 Threads
           </span>
         </div>
 
         <div className="flex items-center justify-between">
-          <div>
+          <label htmlFor="settings-webgl" className="cursor-pointer">
             <span className="text-sm font-semibold text-white block">
               Hardware WebGL Acceleration
             </span>
             <span className="text-zinc-500 text-[11px]">
               Enable interactive 3D WebGL point cloud rendering in Plotly
             </span>
-          </div>
+          </label>
           <input
+            id="settings-webgl"
             type="checkbox"
             checked={enable3D}
-            onChange={(e) => setEnable3D(e.target.checked)}
-            className="rounded border-zinc-700 text-emerald-500 focus:ring-0 bg-zinc-900 w-4 h-4"
+            onChange={(e) => handleToggle3D(e.target.checked)}
+            className="rounded border-zinc-700 text-emerald-500 focus:ring-0 bg-zinc-900 w-4 h-4 cursor-pointer"
           />
         </div>
       </div>
     </div>
   );
 }
-

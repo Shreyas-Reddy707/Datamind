@@ -3,7 +3,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 
 export const metadata = {
-  title: "Privacy Policy | DataMind v2",
+  title: "Privacy Policy",
   description: "Privacy and telemetry policy for DataMind v2 analytical intelligence platform.",
 };
 

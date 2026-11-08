@@ -214,7 +214,7 @@ export function LeftPanel({ overview, fileId }: LeftPanelProps) {
           )}
         </div>
 
-        {/* Section 3: Epodic Memory */}
+        {/* Section 3: Episodic Memory */}
         <div>
           <button
             onClick={() => setIsMemoriesOpen(!isMemoriesOpen)}
@@ -222,7 +222,7 @@ export function LeftPanel({ overview, fileId }: LeftPanelProps) {
           >
             <span className="flex items-center gap-2">
               <Brain className="w-3.5 h-3.5 text-emerald-400" />
-              Epodic Memory ({memories.length})
+              Episodic Memory ({memories.length})
             </span>
             {isMemoriesOpen ? (
               <ChevronDown className="w-3.5 h-3.5 text-zinc-500" />

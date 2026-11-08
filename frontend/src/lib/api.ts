@@ -28,23 +28,42 @@ export class ApiError extends Error {
   }
 }
 
-function getStoredToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem("datamind_token");
+// In-memory access token storage (OWASP: avoid script-readable localStorage)
+let inMemoryAccessToken: string | null = null;
+
+export function getStoredToken(): string | null {
+  return inMemoryAccessToken;
 }
 
 export function setStoredToken(token: string | null) {
-  if (typeof window === "undefined") return;
-  if (token) {
-    localStorage.setItem("datamind_token", token);
-  } else {
-    localStorage.removeItem("datamind_token");
+  inMemoryAccessToken = token;
+}
+
+async function refreshAccessToken(): Promise<string | null> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/v1/auth/refresh`, {
+      method: "POST",
+      credentials: "include",
+    });
+    if (!res.ok) {
+      setStoredToken(null);
+      return null;
+    }
+    const data = await res.json();
+    if (data.access_token) {
+      setStoredToken(data.access_token);
+      return data.access_token;
+    }
+  } catch {
+    setStoredToken(null);
   }
+  return null;
 }
 
 export async function apiFetch<T>(
   endpoint: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  isRetry = false
 ): Promise<T> {
   const token = getStoredToken();
   const headers: Record<string, string> = {
@@ -70,6 +89,19 @@ export async function apiFetch<T>(
     headers,
     credentials: "include",
   });
+
+  // Handle rotating refresh cookie flow if access token expired (status 401)
+  if (
+    response.status === 401 &&
+    !isRetry &&
+    endpoint !== "/api/v1/auth/refresh" &&
+    endpoint !== "/api/v1/auth/login"
+  ) {
+    const newToken = await refreshAccessToken();
+    if (newToken) {
+      return apiFetch<T>(endpoint, options, true);
+    }
+  }
 
   if (!response.ok) {
     let errorCode = "UNKNOWN_ERROR";
@@ -279,6 +311,9 @@ export const api = {
       const bodyStr = JSON.stringify({ message });
       headers["Content-Length"] = new TextEncoder().encode(bodyStr).length.toString();
 
+      let isFinished = false;
+      let hasError = false;
+
       try {
         const response = await fetch(`${API_BASE_URL}/api/v1/chat/${fileId}/stream`, {
           method: "POST",
@@ -304,21 +339,25 @@ export const api = {
           if (done) break;
 
           buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n\n");
-          buffer = lines.pop() || "";
+          const blocks = buffer.split("\n\n");
+          buffer = blocks.pop() || "";
 
-          for (const block of lines) {
+          for (const block of blocks) {
             const blockLines = block.split("\n");
             let event = "message";
-            let data = "";
+            const dataLines: string[] = [];
 
             for (const line of blockLines) {
-              if (line.startsWith("event: ")) {
-                event = line.replace("event: ", "").trim();
-              } else if (line.startsWith("data: ")) {
-                data = line.replace("data: ", "").trim();
+              if (line.startsWith("event:")) {
+                const raw = line.slice(6);
+                event = raw.startsWith(" ") ? raw.slice(1) : raw;
+              } else if (line.startsWith("data:")) {
+                const raw = line.slice(5);
+                dataLines.push(raw.startsWith(" ") ? raw.slice(1) : raw);
               }
             }
+
+            const data = dataLines.join("\n");
 
             if (event === "token" || event === "message") {
               callbacks.onToken(data);
@@ -330,15 +369,26 @@ export const api = {
                 // ignore
               }
             } else if (event === "done") {
-              callbacks.onDone?.();
+              if (!isFinished && !hasError) {
+                isFinished = true;
+                callbacks.onDone?.();
+              }
             } else if (event === "error") {
+              hasError = true;
               callbacks.onError?.(new Error(data));
             }
           }
         }
-        callbacks.onDone?.();
+
+        if (!isFinished && !hasError) {
+          isFinished = true;
+          callbacks.onDone?.();
+        }
       } catch (err) {
-        callbacks.onError?.(err instanceof Error ? err : new Error(String(err)));
+        if (!hasError) {
+          hasError = true;
+          callbacks.onError?.(err instanceof Error ? err : new Error(String(err)));
+        }
       }
     },
   },
@@ -354,4 +404,3 @@ export const api = {
     },
   },
 };
-

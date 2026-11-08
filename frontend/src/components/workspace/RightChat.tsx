@@ -80,7 +80,16 @@ export function RightChat({ fileId }: RightChatProps) {
 
     let accumulatedText = "";
     let capturedArtifact: Record<string, unknown> | null = null;
+    let hasSettled = false;
     const startTime = performance.now();
+
+    const settleStream = () => {
+      if (hasSettled) return;
+      hasSettled = true;
+      setIsStreaming(false);
+      setStreamBuffer("");
+      setCurrentAgentStep(null);
+    };
 
     try {
       await api.chat.stream(fileId, query, {
@@ -108,20 +117,38 @@ export function RightChat({ fileId }: RightChatProps) {
               : null,
           };
           addChatMessage(assistantMsg);
-          setStreamBuffer("");
-          setIsStreaming(false);
-          setCurrentAgentStep(null);
+          settleStream();
         },
         onError: (err) => {
           console.error("Stream error:", err);
-          setIsStreaming(false);
-          setCurrentAgentStep(null);
+          const latency = Math.round(performance.now() - startTime);
+          const fallbackText = accumulatedText.trim()
+            ? `${accumulatedText}\n\n[Stream interrupted: ${err.message || "Connection error"}]`
+            : `Failed to stream response: ${err.message || "An unexpected error occurred."}`;
+          const assistantMsg: ChatMessage = {
+            id: `ast-err-${Date.now()}`,
+            role: "assistant",
+            message_text: fallbackText,
+            tier: activeTier || 1,
+            latency_ms: latency,
+            created_at: new Date().toISOString(),
+          };
+          addChatMessage(assistantMsg);
+          settleStream();
         },
       });
-    } catch (err) {
+    } catch (err: any) {
       console.error("Chat dispatch error:", err);
-      setIsStreaming(false);
-      setCurrentAgentStep(null);
+      const assistantMsg: ChatMessage = {
+        id: `ast-err-${Date.now()}`,
+        role: "assistant",
+        message_text: `Failed to dispatch query: ${err.message || "Server unreachable."}`,
+        tier: 1,
+        created_at: new Date().toISOString(),
+      };
+      addChatMessage(assistantMsg);
+    } finally {
+      settleStream();
     }
   };
 
@@ -133,9 +160,9 @@ export function RightChat({ fileId }: RightChatProps) {
   ];
 
   return (
-    <aside className="w-96 border-l border-zinc-800/80 bg-zinc-950/70 flex flex-col h-full overflow-hidden select-none">
+    <aside className="w-96 border-l border-zinc-800/80 bg-zinc-950/70 flex flex-col h-full overflow-hidden">
       {/* Chat Top Header */}
-      <div className="p-4 border-b border-zinc-800/80 flex items-center justify-between">
+      <div className="p-4 border-b border-zinc-800/80 flex items-center justify-between select-none">
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center">
             <BrainCircuit className="w-4 h-4 text-emerald-400" />
@@ -260,7 +287,7 @@ export function RightChat({ fileId }: RightChatProps) {
       </div>
 
       {/* Chat Input Bar */}
-      <div className="p-4 border-t border-zinc-800/80 bg-zinc-950/80">
+      <div className="p-4 border-t border-zinc-800/80 bg-zinc-950/80 select-none">
         <form
           onSubmit={(e) => {
             e.preventDefault();

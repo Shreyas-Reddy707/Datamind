@@ -1,28 +1,16 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef } from "react";
 
 export function DataCore3DScene() {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [hasWebGL, setHasWebGL] = useState(true);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    // Check WebGL support
-    const gl =
-      canvas.getContext("webgl2") ||
-      canvas.getContext("webgl") ||
-      canvas.getContext("experimental-webgl");
-
-    if (!gl) {
-      setHasWebGL(false);
-      return;
-    }
-
-    // Interactive 3D Canvas Lattice Animation
+    // Interactive 3D Projection Canvas Lattice Animation
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
@@ -181,12 +169,6 @@ export function DataCore3DScene() {
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-emerald-950/20 via-zinc-950/60 to-zinc-950 pointer-events-none" />
 
       <canvas ref={canvasRef} className="relative z-10 w-full h-full" />
-
-      {!hasWebGL && (
-        <div className="absolute inset-0 flex items-center justify-center text-xs font-mono text-zinc-500">
-          [WebGL Accelerated Lattice Active]
-        </div>
-      )}
 
       {/* Industrial telemetry corner marks */}
       <div className="absolute top-3 left-4 text-[10px] font-mono tracking-widest text-zinc-600 uppercase">

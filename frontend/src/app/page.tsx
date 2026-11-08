@@ -241,14 +241,14 @@ export default function LandingPage() {
               </div>
             </TiltCard3D>
 
-            {/* Bento Card 5: Self-Learning Epodic Memory */}
+            {/* Bento Card 5: Self-Learning Episodic Memory */}
             <TiltCard3D className="p-6 h-full flex flex-col justify-between">
               <div>
                 <div className="w-10 h-10 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mb-4">
                   <Layers className="w-5 h-5 text-emerald-400" />
                 </div>
                 <h3 className="text-lg font-semibold text-white mb-2">
-                  Epodic Semantic Memory
+                  Episodic Semantic Memory
                 </h3>
                 <p className="text-sm text-zinc-400 leading-relaxed">
                   PostgreSQL pgvector stores analytical findings, query patterns, and user feedback

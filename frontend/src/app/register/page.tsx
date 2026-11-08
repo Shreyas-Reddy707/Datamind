@@ -69,12 +69,16 @@ export default function RegisterPage() {
 
           <form onSubmit={handleRegister} className="space-y-5">
             <div>
-              <label className="block text-xs font-mono text-zinc-400 uppercase tracking-wider mb-2">
+              <label
+                htmlFor="register-org"
+                className="block text-xs font-mono text-zinc-400 uppercase tracking-wider mb-2"
+              >
                 Organization / Team (Optional)
               </label>
               <div className="relative">
                 <Building className="w-4 h-4 text-zinc-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
+                  id="register-org"
                   type="text"
                   value={orgName}
                   onChange={(e) => setOrgName(e.target.value)}
@@ -85,12 +89,16 @@ export default function RegisterPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-mono text-zinc-400 uppercase tracking-wider mb-2">
+              <label
+                htmlFor="register-email"
+                className="block text-xs font-mono text-zinc-400 uppercase tracking-wider mb-2"
+              >
                 Work Email
               </label>
               <div className="relative">
                 <Mail className="w-4 h-4 text-zinc-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
+                  id="register-email"
                   type="email"
                   required
                   value={email}
@@ -102,12 +110,16 @@ export default function RegisterPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-mono text-zinc-400 uppercase tracking-wider mb-2">
+              <label
+                htmlFor="register-password"
+                className="block text-xs font-mono text-zinc-400 uppercase tracking-wider mb-2"
+              >
                 Password (Min 8 Characters)
               </label>
               <div className="relative">
                 <Lock className="w-4 h-4 text-zinc-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
+                  id="register-password"
                   type="password"
                   required
                   minLength={8}

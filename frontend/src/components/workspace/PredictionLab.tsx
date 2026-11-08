@@ -100,6 +100,10 @@ export function PredictionLab({ fileId, columns }: PredictionLabProps) {
         task_type: selectedTaskType,
       });
       setActiveRun(run);
+      if (run.status === "completed" || run.status === "failed") {
+        setIsTraining(false);
+        await loadPredictionHistory();
+      }
     } catch (err: any) {
       setIsTraining(false);
       setErrorMessage(err.message || "Failed to launch training worker.");
@@ -279,6 +283,23 @@ export function PredictionLab({ fileId, columns }: PredictionLabProps) {
         </div>
       )}
 
+      {/* Failed Run Status Block */}
+      {activeRun && activeRun.status === "failed" && (
+        <div className="p-4 rounded-xl border border-rose-500/30 bg-rose-500/5 flex items-start gap-3">
+          <XCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+          <div className="space-y-1 font-mono">
+            <p className="text-xs font-semibold text-rose-300 uppercase">
+              Model Training Failed
+            </p>
+            <p className="text-xs text-rose-200">
+              {(activeRun as any).error_message ||
+                (activeRun as any).diagnostics_json?.error ||
+                "The AutoML worker encountered an unexpected failure during cross-validation training."}
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Results: Leaderboard & Feature Importance */}
       {activeRun && activeRun.status === "completed" && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -322,13 +343,15 @@ export function PredictionLab({ fileId, columns }: PredictionLabProps) {
                             `#${index + 1}`
                           )}
                         </td>
-                        <td className="py-2 px-3 text-white flex items-center gap-2">
-                          <span>{item.model}</span>
-                          {isBest && (
-                            <span className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                              BEST
-                            </span>
-                          )}
+                        <td className="py-2 px-3 text-white">
+                          <div className="flex items-center gap-2">
+                            <span>{item.model}</span>
+                            {isBest && (
+                              <span className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                                BEST
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="py-2 px-3 text-emerald-400">
                           {item.cv_mean.toFixed(4)}

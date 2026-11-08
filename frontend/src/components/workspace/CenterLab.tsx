@@ -45,6 +45,7 @@ export function CenterLab({ overview, fileId }: CenterLabProps) {
   const [colorCol, setColorCol] = useState<string>("");
   const [chartSpec, setChartSpec] = useState<Record<string, unknown> | null>(null);
   const [isChartLoading, setIsChartLoading] = useState(false);
+  const [chartError, setChartError] = useState<string | null>(null);
 
   // SQL State
   const [sqlQuery, setSqlQuery] = useState<string>("SELECT * FROM dataset LIMIT 20;");
@@ -117,6 +118,7 @@ export function CenterLab({ overview, fileId }: CenterLabProps) {
   const handleGenerateChart = async () => {
     try {
       setIsChartLoading(true);
+      setChartError(null);
       const res = await api.lab.visualize(
         fileId,
         selectedChartType,
@@ -125,8 +127,9 @@ export function CenterLab({ overview, fileId }: CenterLabProps) {
         colorCol || undefined
       );
       setChartSpec(res.plotly_spec);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Chart generation failed:", err);
+      setChartError(err.message || "Failed to generate chart visualization.");
     } finally {
       setIsChartLoading(false);
     }
@@ -208,7 +211,7 @@ export function CenterLab({ overview, fileId }: CenterLabProps) {
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
               <div className="lg:col-span-4">
                 <QualityGauge3D
-                  score={overview?.profile?.health_score ?? 85}
+                  score={overview?.profile?.health_score ?? null}
                   rowCount={overview?.row_count}
                   colCount={overview?.column_count}
                 />
@@ -505,6 +508,12 @@ export function CenterLab({ overview, fileId }: CenterLabProps) {
                   </select>
                 </div>
               </div>
+
+              {chartError && (
+                <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-xs font-mono text-rose-300">
+                  {chartError}
+                </div>
+              )}
             </div>
 
             {/* Plotly Canvas Container */}
@@ -563,6 +572,14 @@ export function CenterLab({ overview, fileId }: CenterLabProps) {
               <textarea
                 value={sqlQuery}
                 onChange={(e) => setSqlQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+                    e.preventDefault();
+                    if (!isSqlExecuting) {
+                      handleExecuteSql();
+                    }
+                  }
+                }}
                 rows={5}
                 className="w-full p-3 bg-zinc-900 border border-zinc-800 rounded-lg text-xs text-zinc-100 font-mono focus:outline-none focus:border-cyan-500 leading-relaxed selection:bg-cyan-500/20"
                 placeholder="SELECT column_a, COUNT(*) FROM dataset GROUP BY column_a;"

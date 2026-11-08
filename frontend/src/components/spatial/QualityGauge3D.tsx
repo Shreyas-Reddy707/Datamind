@@ -3,7 +3,7 @@
 import React from "react";
 
 interface QualityGauge3DProps {
-  score: number; // 0 to 100
+  score?: number | null; // 0 to 100, or null/undefined if unavailable
   rowCount?: number;
   colCount?: number;
   nullPct?: number;
@@ -15,26 +15,34 @@ export function QualityGauge3D({
   colCount,
   nullPct,
 }: QualityGauge3DProps) {
-  const clampedScore = Math.max(0, Math.min(100, Math.round(score)));
+  const isAvailable = score !== undefined && score !== null && !isNaN(score);
+  const clampedScore = isAvailable ? Math.max(0, Math.min(100, Math.round(score))) : null;
 
   // Color selection
-  let color = "#10B981"; // Emerald
-  let label = "Production Grade";
-  let statusBadgeBg = "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
+  let color = "#71717A"; // Zinc for unavailable
+  let label = "Unavailable";
+  let statusBadgeBg = "bg-zinc-800 text-zinc-400 border-zinc-700";
 
-  if (clampedScore < 50) {
-    color = "#F43F5E"; // Rose
-    label = "Needs Cleansing";
-    statusBadgeBg = "bg-rose-500/10 text-rose-400 border-rose-500/20";
-  } else if (clampedScore < 80) {
-    color = "#F59E0B"; // Amber
-    label = "Adequate Quality";
-    statusBadgeBg = "bg-amber-500/10 text-amber-400 border-amber-500/20";
+  if (clampedScore !== null) {
+    if (clampedScore < 50) {
+      color = "#F43F5E"; // Rose
+      label = "Needs Cleansing";
+      statusBadgeBg = "bg-rose-500/10 text-rose-400 border-rose-500/20";
+    } else if (clampedScore < 80) {
+      color = "#F59E0B"; // Amber
+      label = "Adequate Quality";
+      statusBadgeBg = "bg-amber-500/10 text-amber-400 border-amber-500/20";
+    } else {
+      color = "#10B981"; // Emerald
+      label = "Production Grade";
+      statusBadgeBg = "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
+    }
   }
 
   const radius = 54;
   const circumference = 2 * Math.PI * radius;
-  const strokeDashoffset = circumference - (clampedScore / 100) * circumference;
+  const strokeDashoffset =
+    clampedScore !== null ? circumference - (clampedScore / 100) * circumference : circumference;
 
   return (
     <div className="flex flex-col items-center justify-center p-6 bg-zinc-900/60 border border-zinc-800 rounded-xl relative overflow-hidden">
@@ -73,7 +81,7 @@ export function QualityGauge3D({
         {/* Inner Score Readout */}
         <div className="absolute flex flex-col items-center justify-center text-center">
           <span className="text-3xl font-mono font-bold tracking-tight text-white">
-            {clampedScore}
+            {clampedScore !== null ? clampedScore : "—"}
           </span>
           <span className="text-[10px] uppercase font-mono tracking-wider text-zinc-400">
             / 100
@@ -87,7 +95,7 @@ export function QualityGauge3D({
         >
           {label}
         </span>
-        <p className="text-xs text-zinc-400 mt-1">Dataset Health & Integrity</p>
+        <p className="text-xs text-zinc-400 mt-1">Dataset Health &amp; Integrity</p>
       </div>
 
       {/* Sub-metrics Breakdown */}
@@ -114,7 +122,7 @@ export function QualityGauge3D({
               Nulls
             </span>
             <span className="text-xs font-semibold text-zinc-200">
-              {nullPct !== undefined ? `${nullPct.toFixed(1)}%` : "0.0%"}
+              {nullPct !== undefined && nullPct !== null ? `${nullPct.toFixed(1)}%` : "—"}
             </span>
           </div>
         </div>
@@ -122,4 +130,3 @@ export function QualityGauge3D({
     </div>
   );
 }
-

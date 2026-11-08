@@ -108,8 +108,13 @@ export default function DashboardPage() {
   };
 
   const handleLogout = async () => {
-    await api.auth.logout();
-    router.push("/login");
+    try {
+      await api.auth.logout();
+    } catch (err) {
+      console.error("Logout request failed:", err);
+    } finally {
+      router.push("/login");
+    }
   };
 
   const filteredDatasets = datasets.filter((d) =>

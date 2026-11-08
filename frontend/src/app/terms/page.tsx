@@ -3,7 +3,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 
 export const metadata = {
-  title: "Terms of Service | DataMind v2",
+  title: "Terms of Service",
   description: "Terms and conditions governing the use of the DataMind analytical intelligence platform.",
 };
 

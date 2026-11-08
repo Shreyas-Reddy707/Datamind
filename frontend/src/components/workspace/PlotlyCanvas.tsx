@@ -41,24 +41,53 @@ export function PlotlyCanvas({ spec, title }: PlotlyCanvasProps) {
     );
   }
 
-  // Clone and transform spec for 3D WebGL mode if requested
+  // 3D eligibility check: every trace must be scatter-like and have x and y data
+  const isEligibleFor3D =
+    spec.data.length > 0 &&
+    spec.data.every(
+      (trace: any) =>
+        (!trace.type || trace.type === "scatter" || trace.type === "scatter3d") &&
+        Array.isArray(trace.x) &&
+        Array.isArray(trace.y) &&
+        trace.x.length > 0 &&
+        trace.y.length > 0
+    );
+
+  const effective3D = is3DMode && isEligibleFor3D;
+
+  // Clone and transform spec for 3D WebGL mode if eligible and active
   const transformedData = spec.data.map((trace: any) => {
-    if (is3DMode) {
+    if (effective3D) {
       return {
         ...trace,
         type: "scatter3d",
         mode: trace.mode || "markers",
-        z: trace.y || trace.x, // Map Z axis
+        // Preserve existing trace.z data; if missing, construct an index-based z axis
+        z: trace.z !== undefined && trace.z !== null ? trace.z : trace.x.map((_: any, i: number) => i),
         marker: {
           ...trace.marker,
-          size: 4,
-          opacity: 0.8,
+          size: trace.marker?.size || 4,
+          opacity: trace.marker?.opacity ?? 0.8,
         },
       };
     }
     return trace;
   });
 
+  const baseAxis = {
+    gridcolor: "#27272A",
+    zerolinecolor: "#3F3F46",
+    tickfont: { color: "#71717A" },
+    titlefont: { color: "#A1A1AA" },
+  };
+
+  const baseScene = {
+    xaxis: { gridcolor: "#27272A", backgroundcolor: "#09090B", color: "#A1A1AA" },
+    yaxis: { gridcolor: "#27272A", backgroundcolor: "#09090B", color: "#A1A1AA" },
+    zaxis: { gridcolor: "#27272A", backgroundcolor: "#09090B", color: "#A1A1AA" },
+  };
+
+  // Deeply merge xaxis, yaxis, and scene preserving dark-theme base styles
   const mergedLayout = {
     autosize: true,
     paper_bgcolor: "transparent",
@@ -69,28 +98,25 @@ export function PlotlyCanvas({ spec, title }: PlotlyCanvasProps) {
       size: 11,
       color: "#A1A1AA",
     },
+    ...spec.layout,
     xaxis: {
-      gridcolor: "#27272A",
-      zerolinecolor: "#3F3F46",
-      tickfont: { color: "#71717A" },
-      titlefont: { color: "#A1A1AA" },
+      ...baseAxis,
+      ...(spec.layout?.xaxis || {}),
     },
     yaxis: {
-      gridcolor: "#27272A",
-      zerolinecolor: "#3F3F46",
-      tickfont: { color: "#71717A" },
-      titlefont: { color: "#A1A1AA" },
+      ...baseAxis,
+      ...(spec.layout?.yaxis || {}),
     },
-    ...(is3DMode
+    ...(effective3D
       ? {
           scene: {
-            xaxis: { gridcolor: "#27272A", backgroundcolor: "#09090B", color: "#A1A1AA" },
-            yaxis: { gridcolor: "#27272A", backgroundcolor: "#09090B", color: "#A1A1AA" },
-            zaxis: { gridcolor: "#27272A", backgroundcolor: "#09090B", color: "#A1A1AA" },
+            xaxis: { ...baseScene.xaxis, ...(spec.layout?.scene?.xaxis || {}) },
+            yaxis: { ...baseScene.yaxis, ...(spec.layout?.scene?.yaxis || {}) },
+            zaxis: { ...baseScene.zaxis, ...(spec.layout?.scene?.zaxis || {}) },
+            ...(spec.layout?.scene || {}),
           },
         }
       : {}),
-    ...spec.layout,
   };
 
   const config = {
@@ -118,16 +144,25 @@ export function PlotlyCanvas({ spec, title }: PlotlyCanvasProps) {
 
         {/* 3D WebGL Toggle Switch */}
         <button
-          onClick={() => setIs3DMode(!is3DMode)}
+          onClick={() => isEligibleFor3D && setIs3DMode(!is3DMode)}
+          disabled={!isEligibleFor3D}
           className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-[11px] font-mono transition-colors border ${
-            is3DMode
+            !isEligibleFor3D
+              ? "opacity-40 cursor-not-allowed bg-zinc-900 border-zinc-800 text-zinc-500"
+              : effective3D
               ? "bg-cyan-500/10 border-cyan-500/30 text-cyan-400"
               : "bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200"
           }`}
-          title="Toggle 3D WebGL Projection"
+          title={isEligibleFor3D ? "Toggle 3D WebGL Projection" : "3D projection requires scatter traces with X and Y series"}
         >
-          {is3DMode ? <Box className="w-3.5 h-3.5" /> : <Layers className="w-3.5 h-3.5" />}
-          <span>{is3DMode ? "3D WebGL Active" : "2D Vector Mode"}</span>
+          {effective3D ? <Box className="w-3.5 h-3.5" /> : <Layers className="w-3.5 h-3.5" />}
+          <span>
+            {effective3D
+              ? "3D WebGL Active"
+              : isEligibleFor3D
+              ? "2D Vector Mode"
+              : "3D Unavailable"}
+          </span>
         </button>
       </div>
 

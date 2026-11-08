@@ -79,7 +79,7 @@ export default function RootLayout({
       "Sub-millisecond Apache Parquet data lake ingestion",
       "3-Tier bounded multi-agent reasoning with LangGraph",
       "Automated stratified machine learning benchmarking",
-      "Self-learning epodic memory with pgvector embeddings",
+      "Self-learning episodic memory with pgvector embeddings",
     ],
   };
 

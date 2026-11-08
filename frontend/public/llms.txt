@@ -11,7 +11,7 @@ DataMind v2 transforms tabular datasets (CSV, Excel, Parquet) into actionable bu
   - Tier 2: Analytical agents for correlation, outliers, trends, and forensic data quality checks
   - Tier 3: Bounded LangGraph multi-agent cognitive loops with hypothesis generation, verification, and automated ML
 - **Autonomous AutoML Lab**: Automated problem framing (classification, regression, clustering, time-series), automated train/test split, stratified cross-validation, and multi-model benchmarking.
-- **Self-Learning Epodic Memory**: Vector search via pgvector on prior user discoveries, feedback incorporation, and organizational analytical knowledge graphs.
+- **Self-Learning Episodic Memory**: Vector search via pgvector on prior user discoveries, feedback incorporation, and organizational analytical knowledge graphs.
 
 ## Technology Stack
 - Frontend: Next.js 15 (App Router), React 19, Tailwind CSS, Plotly.js, Three.js

@@ -87,12 +87,16 @@ export default function LoginPage() {
 
           <form onSubmit={handleLogin} className="space-y-5">
             <div>
-              <label className="block text-xs font-mono text-zinc-400 uppercase tracking-wider mb-2">
+              <label
+                htmlFor="login-email"
+                className="block text-xs font-mono text-zinc-400 uppercase tracking-wider mb-2"
+              >
                 Work Email
               </label>
               <div className="relative">
                 <Mail className="w-4 h-4 text-zinc-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
+                  id="login-email"
                   type="email"
                   required
                   value={email}
@@ -105,13 +109,17 @@ export default function LoginPage() {
 
             <div>
               <div className="flex items-center justify-between mb-2">
-                <label className="block text-xs font-mono text-zinc-400 uppercase tracking-wider">
+                <label
+                  htmlFor="login-password"
+                  className="block text-xs font-mono text-zinc-400 uppercase tracking-wider"
+                >
                   Password
                 </label>
               </div>
               <div className="relative">
                 <Lock className="w-4 h-4 text-zinc-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
+                  id="login-password"
                   type="password"
                   required
                   value={password}
