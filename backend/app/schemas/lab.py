@@ -4,13 +4,22 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 
 class LabVisualizeRequest(BaseModel):
-    chart_type: str = Field(
+    chart_type: Literal[
+        "distribution",
+        "histogram",
+        "bar",
+        "scatter",
+        "line",
+        "heatmap",
+        "correlation",
+        "box",
+    ] = Field(
         ...,
         description="Type of chart: distribution, scatter, line, heatmap, box",
     )

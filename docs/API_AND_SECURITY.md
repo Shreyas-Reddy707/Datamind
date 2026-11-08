@@ -62,15 +62,40 @@
 - `GET /api/v1/lab/{file_id}/export-pdf`: Exports executive analytical briefing report.
 
 ### Predictive Modeling (`/api/v1/predict`)
-- `POST /api/v1/predict/{file_id}/run`: Enqueues Taskiq background AutoML training job.
+- `POST /api/v1/predict/{file_id}/diagnose`: Evaluates dataset feasibility for ML missions (`PredictDiagnoseRequest` body with optional `target_col`). Returns data readiness diagnostics (`can_proceed`, `blockers`, `warnings`, `suggested_target`, `target_info`, `row_count`, `column_count`).
+- `POST /api/v1/predict/{file_id}/run`: Enqueues Taskiq background AutoML training job (`PredictRunRequest` body with optional `target_col` and `task_type`). Includes smart cache deduplication.
 - `GET /api/v1/predict/{file_id}/jobs/{job_id}`: Polls training progress and returns leaderboard, metrics, and feature importance.
+- `GET /api/v1/predict/{file_id}/history`: Returns historical prediction benchmark runs for this dataset.
 
 ---
 
 ## 3. Bruno Security Test Collection (`/bruno`)
-The `/bruno` folder holds end-to-end tests for every endpoint group:
-1. `01_happy_path.bru`: Standard 200/201 creation and query workflows.
-2. `02_unauthenticated.bru`: Rejects requests missing `Authorization: Bearer <token>` with `401 Unauthorized`.
-3. `03_bola_cross_user_idor.bru`: User B attempts to view, query, or delete User A's `file_id` -> returns `404 Not Found` (or `403 Forbidden`).
-4. `04_invalid_schema_and_file_bomb.bru`: Tests fake `.csv` with `.exe` binary headers, nested payloads > 1MB, and negative pagination values -> returns `422 Unprocessable Entity` or `413 Payload Too Large`.
-5. `05_rate_limit_exceeded.bru`: Bursts 60 requests in 5 seconds to test rate limiter -> returns `429 Too Many Requests`.
+The `/bruno` folder holds end-to-end automated API and security tests organized by functional endpoint groups:
+
+### Auth & Rate Limiting (`bruno/auth/`)
+- `01_register_login.bru`: User registration, login, JWT access token issuance, and rotating refresh cookie validation.
+- `02_unauthenticated.bru`: Rejects requests missing `Authorization: Bearer <token>` with `401 Unauthorized`.
+- `03_rate_limit.bru`: Validates Redis sliding-window rate limiting returning `429 Too Many Requests` with `Retry-After`.
+
+### Dataset Storage & BOLA Security (`bruno/files/`)
+- `01_upload_and_list.bru`: Multipart upload, content-addressed Parquet conversion, deduplication, and listing.
+- `02_bola_idor.bru`: BOLA ownership dependency enforcing cross-user isolation returning `404 Not Found`.
+- `03_malicious_upload.bru`: UploadGuard validation rejecting active executables and invalid magic bytes (`400 Bad Request`).
+
+### Multi-Agent Chat (`bruno/chat/`)
+- `01_chat_stream_tier1.bru`: Validates Server-Sent Events (SSE) streaming and event envelope types.
+- `02_chat_history.bru`: Validates conversation history retrieval capped at 500 messages.
+- `03_pattern_feedback.bru`: Submits thumbs-up/down user feedback adjusting pattern confidence scores.
+- `04_chat_bola_unauthorized.bru`: Ensures cross-tenant chat attempts are rejected with `404 Not Found`.
+
+### Forensic Lab (`bruno/lab/`)
+- `01_lab_overview.bru`: Verifies dataset overview dossier, schema, and DuckDB data profile generation.
+- `02_lab_visualize.bru`: Validates dark-mode Plotly specification generation with 2,000-row sampling.
+- `03_lab_analyze.bru`: Generates forensic briefing finding and persists into `analysis_memory`.
+- `04_lab_export_pdf.bru`: Exports executive analytical briefing report in structured markdown.
+
+### Predictive Modeling & AutoML (`bruno/predict/`)
+- `01_predict_diagnose.bru`: Tests dataset ML viability diagnosis with blockers and target detection.
+- `02_predict_run.bru`: Validates ML mission triggering and atomic smart cache deduplication.
+- `03_predict_invalid_target.bru`: Validates 422 error rejection on unviable or invalid target columns.
+- `04_predict_job_status.bru`: Polls training status, model leaderboard, and feature importances.

@@ -7,6 +7,7 @@ and the deterministic SchemaFirewallNode for zero-hallucination verification.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from typing import Any, TypedDict
@@ -116,7 +117,7 @@ async def summary_agent_node(state: AgentState) -> dict[str, Any]:
     parquet_path = state.get("parquet_path")
     if parquet_path:
         try:
-            df = pd.read_parquet(parquet_path)
+            df = await asyncio.to_thread(pd.read_parquet, parquet_path)
             num_cols = df.select_dtypes(include=["number"]).columns.tolist()
             if num_cols:
                 artifact = ChartBuilder.build_distribution(df, num_cols[0])
@@ -229,7 +230,7 @@ async def viz_agent_node(state: AgentState) -> dict[str, Any]:
     artifact = None
     if parquet_path:
         try:
-            df = pd.read_parquet(parquet_path)
+            df = await asyncio.to_thread(pd.read_parquet, parquet_path)
             target = targets[0] if targets and targets[0] in df.columns else None
 
             if not target:
@@ -280,8 +281,8 @@ async def predict_agent_node(state: AgentState) -> dict[str, Any]:
             "current_step": state["current_step"] + 1,
         }
 
-    df = pd.read_parquet(parquet_path)
-    diag = UniversalMLRunner.diagnose_data(df, target_col)
+    df = await asyncio.to_thread(pd.read_parquet, parquet_path)
+    diag = await asyncio.to_thread(UniversalMLRunner.diagnose_data, df, target_col)
 
     if not diag["can_proceed"]:
         blockers_str = "\n".join([f"- {b}" for b in diag["blockers"]])

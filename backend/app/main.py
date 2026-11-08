@@ -60,18 +60,45 @@ async def security_headers_middleware(request: Request, call_next):
     # 1MB Body Limit check for JSON payloads (skip multipart file uploads which have 50MB limit)
     content_type = request.headers.get("content-type", "")
     content_length = request.headers.get("content-length")
+    transfer_encoding = request.headers.get("transfer-encoding", "").lower()
 
-    if not content_type.startswith("multipart/form-data") and content_length:
-        try:
-            if int(content_length) > 1 * 1024 * 1024:  # 1MB
+    if not content_type.startswith("multipart/form-data"):
+        if "chunked" in transfer_encoding:
+            return build_error_response(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                error_code="CHUNKED_ENCODING_NOT_SUPPORTED",
+                message="Chunked transfer encoding is not supported for non-multipart requests.",
+                request_id=req_id,
+            )
+        if content_length is not None:
+            try:
+                cl = int(content_length)
+                if cl < 0:
+                    raise ValueError("Negative Content-Length")
+                if cl > 1 * 1024 * 1024:  # 1MB
+                    return build_error_response(
+                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                        error_code="PAYLOAD_TOO_LARGE",
+                        message="JSON request body exceeds 1MB safety limit.",
+                        request_id=req_id,
+                    )
+            except ValueError:
+                return build_error_response(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    error_code="INVALID_CONTENT_LENGTH",
+                    message="Malformed Content-Length header provided.",
+                    request_id=req_id,
+                )
+        elif request.method in ("POST", "PUT", "PATCH"):
+            # Enforce 1MB cap while reading body if Content-Length header was omitted
+            body = await request.body()
+            if len(body) > 1 * 1024 * 1024:
                 return build_error_response(
                     status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                     error_code="PAYLOAD_TOO_LARGE",
                     message="JSON request body exceeds 1MB safety limit.",
                     request_id=req_id,
                 )
-        except ValueError:
-            pass
 
     response: Response = await call_next(request)
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -15,7 +15,7 @@ class PredictDiagnoseRequest(BaseModel):
 
 class PredictRunRequest(BaseModel):
     target_col: str | None = Field(default=None, max_length=128)
-    task_type: str | None = Field(
+    task_type: Literal["classification", "regression", "clustering", "timeseries"] | None = Field(
         default=None,
         description="Override task mode: classification, regression, clustering, timeseries",
     )

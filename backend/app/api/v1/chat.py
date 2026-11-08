@@ -7,6 +7,7 @@ triggering autonomous pattern extraction workers.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
@@ -99,8 +100,8 @@ async def chat_stream_endpoint(
                 full_response_text = cached.get("text", "")
                 yield _format_sse("token", full_response_text)
             else:
-                instant_res = InstantResponder.execute(
-                    request.query, gf.parquet_path, schema_json
+                instant_res = await asyncio.to_thread(
+                    InstantResponder.execute, request.query, gf.parquet_path, schema_json
                 )
                 full_response_text = instant_res["result"]
                 yield _format_sse("token", full_response_text)
@@ -143,13 +144,14 @@ async def chat_stream_endpoint(
             yield _format_sse("agent_status", {"status": "Initializing Bounded LangGraph Multi-Agent Brain...", "step": 1})
 
             agent_graph = build_agent_graph()
+            data_profile = await asyncio.to_thread(DuckDBManager.generate_data_profile, gf.parquet_path)
             initial_state = {
                 "query": request.query,
                 "user_id": str(current_user.id),
                 "user_file_id": str(user_file.id),
                 "parquet_path": gf.parquet_path,
                 "schema_json": schema_json,
-                "data_profile": DuckDBManager.generate_data_profile(gf.parquet_path),
+                "data_profile": data_profile,
                 "recent_history": recent_history,
                 "intent": intent,
                 "target_columns": classification.get("target_columns", []),

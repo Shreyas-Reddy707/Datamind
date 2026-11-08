@@ -24,25 +24,51 @@ logger = logging.getLogger("datamind.memory.query_cache")
 class QueryCache:
     """Multi-tier cache using Redis with local in-memory fallback."""
 
-    def __init__(self, max_memory_entries: int = 200, ttl_seconds: int = 3600):
+    def __init__(
+        self,
+        max_memory_entries: int = 200,
+        ttl_seconds: int = 3600,
+        retry_cooldown: float = 30.0,
+    ):
         self.ttl = ttl_seconds
         self.max_memory_entries = max_memory_entries
+        self.retry_cooldown = retry_cooldown
         self._memory_cache: dict[str, dict[str, Any]] = {}
         self._redis_client: aioredis.Redis | None = None
+        self._next_retry_time: float = 0.0
 
     async def _get_redis(self) -> aioredis.Redis | None:
-        if self._redis_client is None:
-            try:
-                self._redis_client = aioredis.from_url(
-                    settings.REDIS_URL,
-                    decode_responses=True,
-                    socket_connect_timeout=2,
-                )
-                await self._redis_client.ping()
-            except Exception as e:
-                logger.debug("Redis cache unavailable (%s), using in-memory fallback", e)
-                self._redis_client = None
-        return self._redis_client
+        if self._redis_client is not None:
+            return self._redis_client
+
+        now = time.monotonic()
+        if now < self._next_retry_time:
+            return None
+
+        client: aioredis.Redis | None = None
+        try:
+            client = aioredis.from_url(
+                settings.REDIS_URL,
+                decode_responses=True,
+                socket_connect_timeout=2,
+            )
+            await client.ping()
+            self._redis_client = client
+            return self._redis_client
+        except Exception as e:
+            logger.debug(
+                "Redis cache unavailable (%s), entering %.1fs cooldown",
+                e,
+                self.retry_cooldown,
+            )
+            self._next_retry_time = now + self.retry_cooldown
+            if client is not None:
+                try:
+                    await client.aclose()
+                except Exception as close_err:
+                    logger.debug("Error closing failed redis client: %s", close_err)
+            self._redis_client = None
+            return None
 
     @staticmethod
     def compute_key(user_id: uuid.UUID, user_file_id: uuid.UUID, query: str) -> str:

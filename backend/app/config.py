@@ -4,6 +4,8 @@ Uses pydantic-settings for type-safe environment configuration with fail-fast
 validation for production secrets and OWASP-compliant defaults.
 """
 
+from __future__ import annotations
+
 import os
 from typing import Literal
 
@@ -11,7 +13,7 @@ os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
 os.environ["DISABLE_TELEMETRY"] = "TRUE"
 os.environ["LITELLM_TELEMETRY"] = "False"
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -95,6 +97,19 @@ class Settings(BaseSettings):
                 "Insecure default secret key detected. You must set a unique, high-entropy secret."
             )
         return v
+
+    @model_validator(mode="after")
+    def validate_production_hardening(self) -> Settings:
+        """Enforce strict production hardening checks."""
+        if self.ENVIRONMENT == "production":
+            if self.DEBUG:
+                raise ValueError("DEBUG must be False in production environment.")
+            if "postgres:postgres" in self.DATABASE_URL or "postgres:postgres" in self.DATABASE_SYNC_URL:
+                raise ValueError("Default postgres credentials are forbidden in production database URLs.")
+            for origin in self.CORS_ORIGINS:
+                if "localhost" in origin or "127.0.0.1" in origin:
+                    raise ValueError(f"Localhost CORS origin '{origin}' is forbidden in production.")
+        return self
 
 
 settings = Settings()

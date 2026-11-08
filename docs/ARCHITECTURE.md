@@ -15,15 +15,18 @@ datamind/
 ├── docker-compose.yml        # Zero-config PostgreSQL 16 (pgvector) + Redis 7
 ├── _legacy_v1/               # Preserved reference v1 logic & assets
 ├── backend/                  # FastAPI + SQLAlchemy 2.0 + DuckDB + LangGraph
+│   ├── alembic/              # Alembic environment and version migration scripts
 │   ├── app/
-│   │   ├── api/v1/           # Modular API routers
-│   │   ├── core/             # Security middleware, dependencies, guards
-│   │   ├── db/               # SQLAlchemy Base, sessionmaker, Alembic migrations
+│   │   ├── api/              # Modular API routers and dependencies (deps.py)
+│   │   ├── security/         # Argon2id, UploadGuard, RateLimiter, PromptGuard
+│   │   ├── memory/           # Pattern learner, pgvector context, query cache
+│   │   ├── llm/              # LiteLLM client & deterministic 768-d embeddings
+│   │   ├── db/               # SQLAlchemy Base and async session management
 │   │   ├── engine/           # DuckDB Parquet engine, Instant Responder, ML runner
 │   │   ├── models/           # Declarative SQLAlchemy 2.0 models
 │   │   ├── schemas/          # Pydantic v2 Create/Update/Response schemas
 │   │   ├── agents/           # LangGraph graph, nodes, SchemaFirewallNode
-│   │   └── workers/          # Taskiq asynchronous tasks
+│   │   └── workers/          # Taskiq asynchronous tasks and broker
 │   └── tests/                # Pytest suites
 └── frontend/                 # Next.js 15 (App Router) Anti-Vibecode UI
 ```

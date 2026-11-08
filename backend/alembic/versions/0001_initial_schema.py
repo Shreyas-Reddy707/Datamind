@@ -1,6 +1,6 @@
 """initial_schema
 
-Revision ID: 1fdb2579ef40
+Revision ID: 0001
 Revises: 
 Create Date: 2026-11-07 16:21:48.519082+00:00
 
