@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { Box, Layers } from "lucide-react";
 
@@ -52,6 +52,12 @@ export function PlotlyCanvas({ spec, title }: PlotlyCanvasProps) {
         trace.x.length > 0 &&
         trace.y.length > 0
     );
+
+  useEffect(() => {
+    if (!isEligibleFor3D && is3DMode) {
+      setIs3DMode(false);
+    }
+  }, [isEligibleFor3D, is3DMode]);
 
   const effective3D = is3DMode && isEligibleFor3D;
 
@@ -110,10 +116,10 @@ export function PlotlyCanvas({ spec, title }: PlotlyCanvasProps) {
     ...(effective3D
       ? {
           scene: {
+            ...(spec.layout?.scene || {}),
             xaxis: { ...baseScene.xaxis, ...(spec.layout?.scene?.xaxis || {}) },
             yaxis: { ...baseScene.yaxis, ...(spec.layout?.scene?.yaxis || {}) },
             zaxis: { ...baseScene.zaxis, ...(spec.layout?.scene?.zaxis || {}) },
-            ...(spec.layout?.scene || {}),
           },
         }
       : {}),

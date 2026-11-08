@@ -39,25 +39,38 @@ export function setStoredToken(token: string | null) {
   inMemoryAccessToken = token;
 }
 
+// Single in-flight refresh promise shared among concurrent 401 callers
+let inFlightRefreshPromise: Promise<string | null> | null = null;
+
 async function refreshAccessToken(): Promise<string | null> {
-  try {
-    const res = await fetch(`${API_BASE_URL}/api/v1/auth/refresh`, {
-      method: "POST",
-      credentials: "include",
-    });
-    if (!res.ok) {
-      setStoredToken(null);
-      return null;
-    }
-    const data = await res.json();
-    if (data.access_token) {
-      setStoredToken(data.access_token);
-      return data.access_token;
-    }
-  } catch {
-    setStoredToken(null);
+  if (inFlightRefreshPromise) {
+    return inFlightRefreshPromise;
   }
-  return null;
+
+  inFlightRefreshPromise = (async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/v1/auth/refresh`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        setStoredToken(null);
+        return null;
+      }
+      const data = await res.json();
+      if (data.access_token) {
+        setStoredToken(data.access_token);
+        return data.access_token;
+      }
+    } catch {
+      setStoredToken(null);
+    } finally {
+      inFlightRefreshPromise = null;
+    }
+    return null;
+  })();
+
+  return inFlightRefreshPromise;
 }
 
 export async function apiFetch<T>(

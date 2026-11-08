@@ -137,12 +137,14 @@ export function RightChat({ fileId }: RightChatProps) {
           settleStream();
         },
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Chat dispatch error:", err);
+      const errorMessage =
+        err instanceof Error ? err.message : "Server unreachable.";
       const assistantMsg: ChatMessage = {
         id: `ast-err-${Date.now()}`,
         role: "assistant",
-        message_text: `Failed to dispatch query: ${err.message || "Server unreachable."}`,
+        message_text: `Failed to dispatch query: ${errorMessage}`,
         tier: 1,
         created_at: new Date().toISOString(),
       };
