@@ -15,6 +15,7 @@ os.environ["LITELLM_TELEMETRY"] = "False"
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import make_url
 
 
 class Settings(BaseSettings):
@@ -104,9 +105,26 @@ class Settings(BaseSettings):
         if self.ENVIRONMENT == "production":
             if self.DEBUG:
                 raise ValueError("DEBUG must be False in production environment.")
-            if "postgres:postgres" in self.DATABASE_URL or "postgres:postgres" in self.DATABASE_SYNC_URL:
-                raise ValueError("Default postgres credentials are forbidden in production database URLs.")
+            for url_str, field_name in [
+                (self.DATABASE_URL, "DATABASE_URL"),
+                (self.DATABASE_SYNC_URL, "DATABASE_SYNC_URL"),
+            ]:
+                try:
+                    parsed = make_url(url_str)
+                    db_user = (parsed.username or "").lower()
+                    db_pass = (parsed.password or "").lower()
+                    if db_user == "postgres" and db_pass == "postgres":  # noqa: S105
+                        raise ValueError(
+                            f"Default postgres credentials are forbidden in production {field_name}."
+                        )
+                except ValueError:
+                    raise
+                except Exception as e:
+                    raise ValueError(f"Invalid database URL in {field_name}: {e}") from e
+
             for origin in self.CORS_ORIGINS:
+                if origin.strip() == "*" or "*" in origin:
+                    raise ValueError("Wildcard '*' CORS origin is strictly forbidden in production.")
                 if "localhost" in origin or "127.0.0.1" in origin:
                     raise ValueError(f"Localhost CORS origin '{origin}' is forbidden in production.")
         return self

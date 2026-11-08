@@ -281,8 +281,17 @@ async def predict_agent_node(state: AgentState) -> dict[str, Any]:
             "current_step": state["current_step"] + 1,
         }
 
-    df = await asyncio.to_thread(pd.read_parquet, parquet_path)
-    diag = await asyncio.to_thread(UniversalMLRunner.diagnose_data, df, target_col)
+    try:
+        df = await asyncio.to_thread(pd.read_parquet, parquet_path)
+        diag = await asyncio.to_thread(UniversalMLRunner.diagnose_data, df, target_col)
+    except Exception as e:
+        logger.warning("Predict agent node dataset read/diagnosis failed: %s", e)
+        return {
+            "brief_response": "Failed to inspect dataset for ML readiness.",
+            "detailed_narrative": f"Error evaluating dataset: {e}",
+            "lab_artifact": None,
+            "current_step": state["current_step"] + 1,
+        }
 
     if not diag["can_proceed"]:
         blockers_str = "\n".join([f"- {b}" for b in diag["blockers"]])

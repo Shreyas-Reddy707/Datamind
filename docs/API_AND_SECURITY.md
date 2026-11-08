@@ -70,16 +70,16 @@
 ---
 
 ## 3. Bruno Security Test Collection (`/bruno`)
-The `/bruno` folder holds end-to-end automated API and security tests organized by functional endpoint groups:
+The `/bruno` folder holds functional HTTP request definitions and manual API smoke-test probes organized by endpoint groups (dynamic multi-request rate-limiting bursts and cross-tenant BOLA isolation guarantees are proven in the automated pytest suite):
 
 ### Auth & Rate Limiting (`bruno/auth/`)
 - `01_register_login.bru`: User registration, login, JWT access token issuance, and rotating refresh cookie validation.
-- `02_unauthenticated.bru`: Rejects requests missing `Authorization: Bearer <token>` with `401 Unauthorized`.
-- `03_rate_limit.bru`: Validates Redis sliding-window rate limiting returning `429 Too Many Requests` with `Retry-After`.
+- `02_unauthenticated.bru`: Verifies that requests missing `Authorization: Bearer <token>` return `401 Unauthorized`.
+- `03_rate_limit.bru`: Probes login with failed credentials and asserts response status in `[401, 403, 429]`. (Full sliding-window rate limiting bursts are verified in pytest).
 
 ### Dataset Storage & BOLA Security (`bruno/files/`)
 - `01_upload_and_list.bru`: Multipart upload, content-addressed Parquet conversion, deduplication, and listing.
-- `02_bola_idor.bru`: BOLA ownership dependency enforcing cross-user isolation returning `404 Not Found`.
+- `02_bola_idor.bru`: Probes file retrieval with a non-existent or foreign UUID and asserts rejection with `404 Not Found` (`RESOURCE_NOT_FOUND`). (Cross-user BOLA isolation between real distinct accounts is verified in pytest).
 - `03_malicious_upload.bru`: UploadGuard validation rejecting active executables and invalid magic bytes (`400 Bad Request`).
 
 ### Multi-Agent Chat (`bruno/chat/`)
