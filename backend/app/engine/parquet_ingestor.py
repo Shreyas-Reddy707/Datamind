@@ -6,6 +6,7 @@ schematic metadata, detects domain heuristics, and converts to Parquet.
 
 from __future__ import annotations
 
+import asyncio
 import csv
 import hashlib
 import io
@@ -92,17 +93,35 @@ class ParquetIngestor:
         ext = os.path.splitext(filename)[1].lower()
 
         if ext == ".csv":
-            raw_sample = file_bytes[:10000]
+            # Cap sniff to first 64KB to avoid CPU stalls on 16MB+ datasets
+            raw_sample = file_bytes[:65536]
             enc_result = chardet.detect(raw_sample)
-            encoding = enc_result["encoding"] or "utf-8"
+            encoding = enc_result.get("encoding") or "utf-8"
+            if encoding.lower() in ("ascii", "none"):
+                encoding = "utf-8"
             try:
-                snippet = file_bytes[:2048].decode(encoding)
+                snippet = raw_sample[:4096].decode(encoding, errors="ignore")
                 sniffer = csv.Sniffer()
                 dialect = sniffer.sniff(snippet)
                 delimiter = dialect.delimiter
             except Exception:
                 delimiter = ","
-            df = pd.read_csv(io.BytesIO(file_bytes), encoding=encoding, sep=delimiter)
+            try:
+                df = pd.read_csv(
+                    io.BytesIO(file_bytes),
+                    encoding=encoding,
+                    sep=delimiter,
+                    low_memory=False,
+                    on_bad_lines="skip",
+                )
+            except Exception:
+                df = pd.read_csv(
+                    io.BytesIO(file_bytes),
+                    encoding="latin-1",
+                    sep=delimiter,
+                    low_memory=False,
+                    on_bad_lines="skip",
+                )
 
         elif ext in (".xlsx", ".xls"):
             df = pd.read_excel(io.BytesIO(file_bytes))
@@ -167,6 +186,56 @@ class ParquetIngestor:
         }
 
     @classmethod
+    def _process_file_sync(
+        cls,
+        file_bytes: bytes,
+        clean_filename: str,
+        parquet_rel_path: str,
+    ) -> tuple[dict[str, Any], int, int, str]:
+        """Synchronous CPU/disk heavy file parsing and Parquet conversion.
+
+        Executed via asyncio.to_thread to keep FastAPI's event loop fully non-blocking.
+        """
+        df = cls.load_dataframe_from_bytes(file_bytes, clean_filename)
+        post_val = UploadGuard.validate_after_read(df, clean_filename)
+        if not post_val["safe"]:
+            raise ValueError(post_val["error"])
+
+        # Sanitize columns
+        df, _ = InputSanitizer.sanitize_column_names(df)
+
+        # PyArrow Mixed-Type Resilience:
+        # Datasets like hotel_bookings.csv (children, agent, company, country)
+        # contain mixed numeric/string/NULL/NA values causing ArrowTypeError.
+        for col in df.columns:
+            if df[col].dtype == "object":
+                s_cleaned = df[col].replace(["NULL", "null", "NA", "na", "NaN", "None", ""], None)
+                numeric_s = pd.to_numeric(s_cleaned, errors="coerce")
+                valid_count = s_cleaned.dropna().count()
+                if valid_count > 0 and numeric_s.notnull().sum() == valid_count:
+                    df[col] = numeric_s
+                else:
+                    df[col] = df[col].apply(
+                        lambda v: None if pd.isna(v) or (isinstance(v, str) and v.strip().upper() in ("NULL", "NA", "NAN", "NONE", "")) else str(v)
+                    )
+
+        schema_info = cls.extract_schema_metadata(df)
+
+        # Write Parquet with fallback
+        try:
+            arrow_table = pa.Table.from_pandas(df, preserve_index=False)
+            pq.write_table(arrow_table, parquet_rel_path, compression="zstd")
+        except Exception as e:
+            logger.warning("pa.Table.from_pandas failed (%s), stringifying objects for fallback", e)
+            for col in df.columns:
+                if df[col].dtype == "object":
+                    df[col] = df[col].astype(str).replace({"nan": None, "None": None, "<NA>": None})
+            df.to_parquet(parquet_rel_path, engine="pyarrow", compression="zstd", index=False)
+
+        ext = os.path.splitext(clean_filename)[1].lstrip(".").lower()
+        return schema_info, len(df), len(df.columns), ext
+
+    @classmethod
     async def ingest_file(
         cls,
         file_bytes: bytes,
@@ -201,28 +270,18 @@ class ParquetIngestor:
             global_file.ref_count += 1
             is_deduplicated = True
         else:
-            # Parse dataset
-            df = cls.load_dataframe_from_bytes(file_bytes, clean_filename)
-            post_val = UploadGuard.validate_after_read(df, clean_filename)
-            if not post_val["safe"]:
-                raise ValueError(post_val["error"])
+            # Parse dataset and write Parquet in worker thread (non-blocking)
+            schema_info, row_count, col_count, ext = await asyncio.to_thread(
+                cls._process_file_sync, file_bytes, clean_filename, parquet_rel_path
+            )
 
-            # Sanitize columns
-            df, _ = InputSanitizer.sanitize_column_names(df)
-            schema_info = cls.extract_schema_metadata(df)
-
-            # Convert to PyArrow table & write Parquet
-            arrow_table = pa.Table.from_pandas(df)
-            pq.write_table(arrow_table, parquet_rel_path, compression="zstd")
-
-            ext = os.path.splitext(clean_filename)[1].lstrip(".").lower()
             global_file = GlobalFile(
                 sha256_hash=sha256,
                 parquet_path=parquet_rel_path,
                 original_format=ext,
                 file_size_bytes=len(file_bytes),
-                row_count=len(df),
-                col_count=len(df.columns),
+                row_count=row_count,
+                col_count=col_count,
                 schema_json=schema_info,
                 detected_domain=schema_info["detected_domain"],
                 ref_count=1,

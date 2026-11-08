@@ -78,7 +78,11 @@ export async function apiFetch<T>(
   options: RequestInit = {},
   isRetry = false
 ): Promise<T> {
-  const token = getStoredToken();
+  let token = getStoredToken();
+  if (!token && !isRetry && !endpoint.startsWith("/api/v1/auth/")) {
+    token = await refreshAccessToken();
+  }
+
   const headers: Record<string, string> = {
     ...(options.headers as Record<string, string>),
   };
@@ -193,29 +197,48 @@ export const api = {
     },
   },
 
-  datasets: {
+  files: {
     async list(): Promise<UserFile[]> {
-      return apiFetch<UserFile[]>("/api/v1/datasets");
+      const res = await apiFetch<{ items?: UserFile[] } | UserFile[]>("/api/v1/files");
+      if (Array.isArray(res)) return res;
+      if (res && Array.isArray(res.items)) return res.items;
+      return [];
     },
     async upload(file: File): Promise<UserFile> {
-      const token = getStoredToken();
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const idempotencyKey = `${file.name}-${file.size}-${Date.now()}`;
-      const headers: Record<string, string> = {
-        "Idempotency-Key": idempotencyKey,
-      };
-      if (token) {
-        headers["Authorization"] = `Bearer ${token}`;
+      let token = getStoredToken();
+      if (!token) {
+        token = await refreshAccessToken();
       }
 
-      const response = await fetch(`${API_BASE_URL}/api/v1/datasets/upload`, {
-        method: "POST",
-        headers,
-        body: formData,
-        credentials: "include",
-      });
+      const sendUpload = async (authToken: string | null) => {
+        const formData = new FormData();
+        formData.append("file", file);
+
+        const idempotencyKey = `${file.name}-${file.size}-${Date.now()}`;
+        const headers: Record<string, string> = {
+          "Idempotency-Key": idempotencyKey,
+        };
+        if (authToken) {
+          headers["Authorization"] = `Bearer ${authToken}`;
+        }
+
+        return fetch(`${API_BASE_URL}/api/v1/files/upload`, {
+          method: "POST",
+          headers,
+          body: formData,
+          credentials: "include",
+        });
+      };
+
+      let response = await sendUpload(token);
+
+      // Handle 401: Refresh token and retry once
+      if (response.status === 401) {
+        const freshToken = await refreshAccessToken();
+        if (freshToken) {
+          response = await sendUpload(freshToken);
+        }
+      }
 
       if (!response.ok) {
         let errorCode = "UPLOAD_FAILED";
@@ -224,7 +247,18 @@ export const api = {
         try {
           const err = await response.json();
           if (err.error_code) errorCode = err.error_code;
-          if (err.message) message = err.message;
+          if (err.message) {
+            message = err.message;
+          } else if (err.detail) {
+            message = Array.isArray(err.detail)
+              ? err.detail
+                  .map((d: { loc?: (string | number)[]; msg?: string }) => {
+                    const field = d.loc && d.loc.length > 1 ? d.loc.slice(1).join(".") : "field";
+                    return `${field}: ${d.msg || "Invalid"}`;
+                  })
+                  .join("; ")
+              : String(err.detail);
+          }
           if (err.request_id) requestId = err.request_id;
         } catch {
           // not json
@@ -235,13 +269,18 @@ export const api = {
       return response.json();
     },
     async get(fileId: string): Promise<UserFile> {
-      return apiFetch<UserFile>(`/api/v1/datasets/${fileId}`);
+      return apiFetch<UserFile>(`/api/v1/files/${fileId}`);
     },
     async delete(fileId: string): Promise<{ ok: boolean }> {
-      return apiFetch<{ ok: boolean }>(`/api/v1/datasets/${fileId}`, {
+      return apiFetch<{ ok: boolean }>(`/api/v1/files/${fileId}`, {
         method: "DELETE",
       });
     },
+  },
+
+  // Alias datasets -> files for backward compatibility
+  get datasets() {
+    return this.files;
   },
 
   lab: {
@@ -328,7 +367,10 @@ export const api = {
         onError?: (err: Error) => void;
       }
     ): Promise<void> {
-      const token = getStoredToken();
+      let token = getStoredToken();
+      if (!token) {
+        token = await refreshAccessToken();
+      }
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
       };
@@ -336,7 +378,7 @@ export const api = {
         headers["Authorization"] = `Bearer ${token}`;
       }
 
-      const bodyStr = JSON.stringify({ message });
+      const bodyStr = JSON.stringify({ query: message, message });
       headers["Content-Length"] = new TextEncoder().encode(bodyStr).length.toString();
 
       let isFinished = false;

@@ -87,8 +87,10 @@ export default function DashboardPage() {
     } catch (err) {
       if (err instanceof ApiError) {
         setUploadError(err.message || "Failed to process file.");
+      } else if (err instanceof Error) {
+        setUploadError(err.message || "Upload failed.");
       } else {
-        setUploadError("Upload failed. Verify server connection.");
+        setUploadError("Upload failed.");
       }
     } finally {
       setIsUploading(false);

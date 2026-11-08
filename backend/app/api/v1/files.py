@@ -6,6 +6,7 @@ reference-counted deletion, DuckDB profiling, instant stats, and multi-file join
 
 from __future__ import annotations
 
+import asyncio
 import os
 import uuid
 
@@ -151,7 +152,7 @@ async def get_file_data_profile(
     """Generate live DuckDB data quality and summary profile for the dataset."""
     parquet_path = user_file.global_file.parquet_path
     try:
-        profile = DuckDBManager.generate_data_profile(parquet_path)
+        profile = await asyncio.to_thread(DuckDBManager.generate_data_profile, parquet_path)
         return profile
     except Exception as e:
         raise AppError(

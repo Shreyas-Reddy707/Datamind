@@ -58,7 +58,7 @@ async def security_headers_middleware(request: Request, call_next):
     request.state.request_id = req_id
 
     # 1MB Body Limit check for JSON payloads (skip multipart file uploads which have 50MB limit)
-    content_type = request.headers.get("content-type", "")
+    content_type = request.headers.get("content-type", "").lower().strip()
     content_length = request.headers.get("content-length")
     transfer_encoding = request.headers.get("transfer-encoding", "").lower()
 
@@ -99,6 +99,20 @@ async def security_headers_middleware(request: Request, call_next):
                     message="JSON request body exceeds 1MB safety limit.",
                     request_id=req_id,
                 )
+    else:
+        # Multipart file upload: enforce MAX_FILE_SIZE_MB limit (50MB)
+        if content_length is not None:
+            try:
+                cl = int(content_length)
+                if cl > settings.MAX_FILE_SIZE_MB * 1024 * 1024:
+                    return build_error_response(
+                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                        error_code="PAYLOAD_TOO_LARGE",
+                        message=f"File exceeds maximum allowed size of {settings.MAX_FILE_SIZE_MB}MB.",
+                        request_id=req_id,
+                    )
+            except ValueError:
+                pass
 
     response: Response = await call_next(request)
 

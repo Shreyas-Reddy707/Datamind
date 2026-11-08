@@ -2,6 +2,11 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   transpilePackages: ["three"],
+  experimental: {
+    // @ts-expect-error Next.js 15 runtime supports proxyClientMaxBodySize for rewrites body buffer
+    proxyClientMaxBodySize: "60mb",
+    proxyTimeout: 120_000,
+  },
   webpack: (config) => {
     config.externals = [...(config.externals || []), { canvas: "canvas" }];
     return config;

@@ -119,10 +119,16 @@ export function LeftPanel({ overview, fileId }: LeftPanelProps) {
 
           {isSchemaOpen && (
             <div className="px-3 pb-3 space-y-1">
-              {Object.entries(columns).map(([colName, meta]) => {
+              {Object.entries(columns).map(([colName, rawMeta]) => {
+                const meta = rawMeta as { type?: string; dtype?: string };
                 const profile = overview?.profile?.columns?.[colName];
-                const isNumeric = meta.type.includes("INT") || meta.type.includes("FLOAT") || meta.type.includes("DOUBLE");
-                const isDate = meta.type.includes("TIME") || meta.type.includes("DATE");
+                const typeStr = (meta?.type || meta?.dtype || "text").toUpperCase();
+                const isNumeric =
+                  typeStr.includes("INT") ||
+                  typeStr.includes("FLOAT") ||
+                  typeStr.includes("DOUBLE") ||
+                  typeStr.includes("NUMERIC");
+                const isDate = typeStr.includes("TIME") || typeStr.includes("DATE");
 
                 return (
                   <div
@@ -149,7 +155,7 @@ export function LeftPanel({ overview, fileId }: LeftPanelProps) {
                         </span>
                       )}
                       <span className="text-[9px] font-mono text-zinc-500 uppercase">
-                        {meta.type.split("(")[0]}
+                        {typeStr.split("(")[0]}
                       </span>
                     </div>
                   </div>
