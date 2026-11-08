@@ -39,7 +39,8 @@ tmp/
 *.parquet
 datamind/data/
 
-# ── Environment & Secrets ──
+# ── Testing & MCP artifacts ──
+.playwright-mcp/
 .env.local
 .env.*.local
 *.secret

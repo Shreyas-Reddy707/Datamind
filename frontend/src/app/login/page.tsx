@@ -29,6 +29,8 @@ export default function LoginPage() {
         } else {
           setErrorMsg(err.message || "Invalid email or password.");
         }
+      } else if (err instanceof Error) {
+        setErrorMsg(err.message);
       } else {
         setErrorMsg("Failed to connect to authentication service.");
       }
@@ -45,6 +47,8 @@ export default function LoginPage() {
       router.push("/dashboard");
     } catch (err) {
       if (err instanceof ApiError) {
+        setErrorMsg(err.message);
+      } else if (err instanceof Error) {
         setErrorMsg(err.message);
       } else {
         setErrorMsg("Failed to provision guest session.");

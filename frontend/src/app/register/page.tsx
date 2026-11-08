@@ -31,6 +31,8 @@ export default function RegisterPage() {
     } catch (err) {
       if (err instanceof ApiError) {
         setErrorMsg(err.message || "Failed to create account.");
+      } else if (err instanceof Error) {
+        setErrorMsg(err.message);
       } else {
         setErrorMsg("Failed to connect to authentication service.");
       }

@@ -14,6 +14,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
+from app.config import settings
 from app.db.session import get_db
 from app.models.organization import Organization
 from app.models.password_reset import PasswordResetToken
@@ -64,7 +65,11 @@ async def register(
         )
 
     clean_email = InputSanitizer.sanitize_auth_input(req.email, "email")
-    clean_username = InputSanitizer.sanitize_auth_input(req.username, "username")
+    clean_username = (
+        InputSanitizer.sanitize_auth_input(req.username, "username")
+        if req.username
+        else clean_email.split("@")[0][:20]
+    )
 
     # Check email uniqueness
     existing_user = (
@@ -115,7 +120,7 @@ async def register(
         key="refresh_token",
         value=raw_refresh,
         httponly=True,
-        secure=True,
+        secure=(settings.ENVIRONMENT == "production"),
         samesite="lax",
         max_age=7 * 24 * 3600,
     )
@@ -207,7 +212,7 @@ async def login(
         key="refresh_token",
         value=raw_refresh,
         httponly=True,
-        secure=True,
+        secure=(settings.ENVIRONMENT == "production"),
         samesite="lax",
         max_age=7 * 24 * 3600,
     )
@@ -277,7 +282,7 @@ async def refresh_tokens(
         key="refresh_token",
         value=new_raw_refresh,
         httponly=True,
-        secure=True,
+        secure=(settings.ENVIRONMENT == "production"),
         samesite="lax",
         max_age=7 * 24 * 3600,
     )
@@ -305,7 +310,12 @@ async def logout(
         )
         await db.commit()
 
-    response.delete_cookie(key="refresh_token", httponly=True, secure=True, samesite="lax")
+    response.delete_cookie(
+        key="refresh_token",
+        httponly=True,
+        secure=(settings.ENVIRONMENT == "production"),
+        samesite="lax",
+    )
     return {"message": "Successfully logged out."}
 
 
@@ -321,7 +331,7 @@ async def guest_login(
         key="refresh_token",
         value=raw_refresh,
         httponly=True,
-        secure=True,
+        secure=(settings.ENVIRONMENT == "production"),
         samesite="lax",
         max_age=24 * 3600,
     )

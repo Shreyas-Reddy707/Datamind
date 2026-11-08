@@ -3,10 +3,17 @@
 from __future__ import annotations
 
 import uuid
+import warnings
 from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
+
+warnings.filterwarnings(
+    "ignore",
+    category=UserWarning,
+    message=r'.*Field name "schema_json" in "GlobalFileResponse" shadows an attribute.*',
+)
 
 
 class GlobalFileResponse(BaseModel):

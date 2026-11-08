@@ -12,7 +12,7 @@ import {
 } from "./types";
 
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+  process.env.NEXT_PUBLIC_API_URL || "";
 
 export class ApiError extends Error {
   errorCode: string;
@@ -124,7 +124,22 @@ export async function apiFetch<T>(
     try {
       const errorJson = await response.json();
       if (errorJson.error_code) errorCode = errorJson.error_code;
-      if (errorJson.message) message = errorJson.message;
+      if (errorJson.message) {
+        message = errorJson.message;
+      } else if (errorJson.detail) {
+        if (Array.isArray(errorJson.detail)) {
+          message = errorJson.detail
+            .map((d: { loc?: (string | number)[]; msg?: string }) => {
+              const field = d.loc && d.loc.length > 1 ? d.loc.slice(1).join(".") : "field";
+              return `${field}: ${d.msg || "Invalid"}`;
+            })
+            .join("; ");
+          errorCode = "VALIDATION_ERROR";
+        } else if (typeof errorJson.detail === "string") {
+          message = errorJson.detail;
+          errorCode = "VALIDATION_ERROR";
+        }
+      }
       if (errorJson.request_id) requestId = errorJson.request_id;
     } catch {
       // response was not JSON
