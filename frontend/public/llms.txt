@@ -22,3 +22,4 @@ DataMind v2 transforms tabular datasets (CSV, Excel, Parquet) into actionable bu
 - Public Website: https://datamind.ai
 - Terms of Service: https://datamind.ai/terms
 - Privacy Policy: https://datamind.ai/privacy
+

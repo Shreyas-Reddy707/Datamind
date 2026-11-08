@@ -615,3 +615,4 @@ export function CenterLab({ overview, fileId }: CenterLabProps) {
     </div>
   );
 }
+

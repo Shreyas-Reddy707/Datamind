@@ -379,3 +379,4 @@ export function PredictionLab({ fileId, columns }: PredictionLabProps) {
     </div>
   );
 }
+

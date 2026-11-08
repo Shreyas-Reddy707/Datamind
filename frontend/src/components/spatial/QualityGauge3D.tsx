@@ -122,3 +122,4 @@ export function QualityGauge3D({
     </div>
   );
 }
+

@@ -273,3 +273,4 @@ export function LeftPanel({ overview, fileId }: LeftPanelProps) {
     </aside>
   );
 }
+
