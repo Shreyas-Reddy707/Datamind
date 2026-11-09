@@ -19,6 +19,7 @@ from app.api.v1.auth import router as auth_router
 from app.api.v1.chat import router as chat_router
 from app.api.v1.files import router as files_router
 from app.api.v1.lab import router as lab_router
+from app.api.v1.memory import router as memory_router
 from app.api.v1.predict import router as predict_router
 from app.config import settings
 from app.db.session import engine
@@ -176,4 +177,5 @@ app.include_router(auth_router, prefix="/api/v1")
 app.include_router(files_router, prefix="/api/v1")
 app.include_router(chat_router, prefix="/api/v1")
 app.include_router(lab_router, prefix="/api/v1")
+app.include_router(memory_router, prefix="/api/v1")
 app.include_router(predict_router, prefix="/api/v1")

@@ -82,8 +82,8 @@ export default function DashboardPage() {
     try {
       setIsUploading(true);
       const uploadedFile = await api.datasets.upload(file);
-      setUploadSuccess(`Ingested "${uploadedFile.display_name}" successfully.`);
-      await loadDashboardData();
+      setUploadSuccess(`Ingested "${uploadedFile.display_name}" successfully. Navigating to workspace...`);
+      router.push(`/workspace/${uploadedFile.id}`);
     } catch (err) {
       if (err instanceof ApiError) {
         setUploadError(err.message || "Failed to process file.");

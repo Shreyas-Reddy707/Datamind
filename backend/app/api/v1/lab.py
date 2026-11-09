@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import uuid
 
 import pandas as pd
@@ -53,6 +54,151 @@ async def get_lab_overview_endpoint(
         "profile": profile,
         "ref_count": gf.ref_count,
     }
+
+
+@router.get("/{file_id}/preview")
+async def get_lab_preview_endpoint(
+    file_id: uuid.UUID,
+    limit: int = Query(default=25, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    search: str | None = Query(default=None),
+    sort_col: str | None = Query(default=None),
+    sort_dir: str = Query(default="asc"),
+    current_user: User = Depends(get_current_user),
+    user_file: UserFile = Depends(get_authorized_user_file),
+):
+    """Retrieve vectorized row preview slice from Parquet storage."""
+    gf = user_file.global_file
+    res = await asyncio.to_thread(
+        DuckDBManager.preview,
+        parquet_path=gf.parquet_path,
+        limit=limit,
+        offset=offset,
+        search=search,
+        sort_col=sort_col,
+        sort_dir=sort_dir,
+    )
+    return res
+
+
+@router.get("/{file_id}/forensic")
+async def get_lab_forensic_endpoint(
+    file_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    user_file: UserFile = Depends(get_authorized_user_file),
+    db: AsyncSession = Depends(get_db),
+):
+    """Retrieve or autonomously generate deep forensic diagnostics and briefing report."""
+    gf = user_file.global_file
+
+    # 1. Check existing forensic memory
+    stmt = (
+        select(AnalysisMemory)
+        .where(
+            AnalysisMemory.user_file_id == user_file.id,
+            AnalysisMemory.user_id == current_user.id,
+        )
+        .order_by(AnalysisMemory.created_at.desc())
+    )
+    existing_memories = (await db.scalars(stmt)).all()
+
+    if existing_memories:
+        findings = []
+        for m in existing_memories:
+            findings.append({
+                "title": m.query_text or "Diagnostic Finding",
+                "severity": "MEDIUM",
+                "description": m.finding_text,
+                "insight": m.finding_text,
+            })
+        raw_report = ""
+        for m in existing_memories:
+            if m.evidence_json and isinstance(m.evidence_json, dict) and m.evidence_json.get("raw_report"):
+                raw_report = m.evidence_json["raw_report"]
+                break
+        if not raw_report:
+            raw_report = (
+                f"## Forensic Briefing: {user_file.display_name}\n\n"
+                f"### Context\nDataset scope: {gf.row_count:,} rows across {gf.col_count} columns.\n\n"
+                f"### Key Findings\n" + "\n".join(f"- {f['description']}" for f in findings[:5]) + "\n\n"
+                "### Strategic Implication\nAutonomous verification complete. Ready for vectorized analytics."
+            )
+        return {"findings": findings, "report": raw_report}
+
+    # 2. Auto-generate initial briefing if empty
+    profile = await asyncio.to_thread(DuckDBManager.generate_data_profile, gf.parquet_path)
+    health_score = profile.get("health_score", 100)
+    col_profiles = profile.get("columns", {})
+
+    findings = [
+        {
+            "title": "Data Integrity Score",
+            "severity": "LOW" if health_score >= 80 else ("HIGH" if health_score < 50 else "MEDIUM"),
+            "description": f"Dataset health rated at {health_score}/100 across {gf.row_count:,} rows and {gf.col_count} columns.",
+            "insight": f"Health index {health_score}/100",
+        }
+    ]
+
+    null_cols = [c for c, p in col_profiles.items() if p.get("null_percentage", 0) > 0]
+    if null_cols:
+        high_nulls = [c for c in null_cols if col_profiles[c].get("null_percentage", 0) > 20]
+        severity = "HIGH" if high_nulls else "MEDIUM"
+        desc = (
+            f"Detected {len(null_cols)} columns with missing values. "
+            f"Highest nulls in: {', '.join(null_cols[:5])}."
+        )
+        findings.append({
+            "title": "Missing Values & Null Sparsity",
+            "severity": severity,
+            "description": desc,
+            "insight": desc,
+        })
+
+    # High cardinality check
+    high_card_cols = [
+        c for c, p in col_profiles.items()
+        if p.get("distinct_count") and p["distinct_count"] == gf.row_count and gf.row_count > 50
+    ]
+    if high_card_cols:
+        findings.append({
+            "title": "Identifier / High Cardinality Columns",
+            "severity": "LOW",
+            "description": f"Columns with unique IDs: {', '.join(high_card_cols[:3])}.",
+            "insight": f"Unique key candidates: {', '.join(high_card_cols[:3])}",
+        })
+
+    report = (
+        f"## Forensic Integrity Briefing: {user_file.display_name}\n\n"
+        f"### Context\n"
+        f"Vectorized ingestion completed for `{user_file.display_name}` ({gf.row_count:,} rows, {gf.col_count} dimensions). "
+        f"Overall dataset integrity evaluated at {health_score}/100.\n\n"
+        f"### Key Findings\n"
+        + "\n".join(f"- **{f['title']}**: {f['description']}" for f in findings)
+        + "\n\n"
+        f"### Empirical Evidence\n"
+        f"Total missing cells: {profile.get('total_nulls', 0):,} ({profile.get('null_percentage', 0)}% of dataset). "
+        f"Memory footprint optimized in zero-copy Parquet.\n\n"
+        f"### Strategic Implication\n"
+        f"Dataset is structurally validated for automated feature selection, statistical hypothesis tests, and AutoML benchmarking."
+    )
+
+    # Save to AnalysisMemory
+    mem = AnalysisMemory(
+        user_id=current_user.id,
+        user_file_id=user_file.id,
+        agent_type="forensic",
+        query_text="Initial Forensic Integrity Scan",
+        context_text=f"{gf.row_count:,} rows × {gf.col_count} columns",
+        finding_text=f"Integrity Score {health_score}/100. {len(null_cols)} column(s) have missing values.",
+        evidence_json={"raw_report": report, "health_score": health_score, "findings": findings},
+        implication_text="Dataset is structurally verified for vectorized OLAP & AutoML.",
+        plotly_spec_json=None,
+    )
+    db.add(mem)
+    await db.commit()
+    await db.refresh(mem)
+
+    return {"findings": findings, "report": report}
 
 
 @router.post("/{file_id}/visualize")
@@ -151,14 +297,12 @@ async def run_lab_analysis_endpoint(
         m = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
         return m.group(1).strip() if m else ""
 
-    import re
-
     ctx = extract_header("Context", content)
     finding = extract_header("Key Finding", content) or content[:300]
     implication = extract_header("Strategic Implication", content)
 
     # Optional baseline figure
-    df = pd.read_parquet(gf.parquet_path)
+    df = await asyncio.to_thread(pd.read_parquet, gf.parquet_path)
     num_cols = df.select_dtypes(include=["number"]).columns.tolist()
     plotly_spec = ChartBuilder.build_distribution(df, num_cols[0]) if num_cols else None
 

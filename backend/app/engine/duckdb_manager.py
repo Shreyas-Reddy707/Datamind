@@ -14,6 +14,7 @@ import re
 from typing import Any
 
 import duckdb
+import numpy as np
 
 logger = logging.getLogger("datamind.engine.duckdb")
 
@@ -78,6 +79,69 @@ class DuckDBManager:
             rel = conn.sql(final_query)
             df = rel.df()
             return df.to_dict(orient="records")
+        finally:
+            conn.close()
+
+    @classmethod
+    def preview(
+        cls,
+        parquet_path: str,
+        limit: int = 25,
+        offset: int = 0,
+        search: str | None = None,
+        sort_col: str | None = None,
+        sort_dir: str = "asc",
+    ) -> dict[str, Any]:
+        """Fetch paginated, searchable rows directly from Parquet via DuckDB."""
+        if not os.path.exists(parquet_path):
+            raise FileNotFoundError(f"Parquet file not found at: {parquet_path}")
+
+        normalized_path = parquet_path.replace("\\", "/")
+        conn = duckdb.connect(database=":memory:", read_only=False)
+        try:
+            conn.execute("SET memory_limit = '512MB'; SET threads = 2;")
+            conn.execute("CREATE TABLE dataset AS SELECT * FROM read_parquet(?)", [normalized_path])
+            conn.execute("SET enable_external_access = false;")
+
+            col_info = conn.execute("DESCRIBE dataset").fetchall()
+            columns = [c[0] for c in col_info]
+            valid_cols = set(columns)
+
+            where_clauses: list[str] = []
+            params: list[Any] = []
+            if search and search.strip():
+                search_terms = []
+                for c in columns[:10]:
+                    esc = escape_identifier(c)
+                    search_terms.append(f"CAST({esc} AS VARCHAR) ILIKE ?")
+                    params.append(f"%{search.strip()}%")
+                if search_terms:
+                    where_clauses.append(f"({' OR '.join(search_terms)})")
+
+            where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+            count_query = f"SELECT count(*) FROM dataset {where_sql}"  # noqa: S608
+            total_rows = conn.execute(count_query, params).fetchone()[0]
+
+            order_clause = ""
+            if sort_col and sort_col in valid_cols:
+                direction = "DESC" if sort_dir.lower() == "desc" else "ASC"
+                order_clause = f"ORDER BY {escape_identifier(sort_col)} {direction}"
+
+            data_query = (
+                f"SELECT * FROM dataset {where_sql} {order_clause} LIMIT ? OFFSET ?"  # noqa: S608
+            )
+            data_params = params + [limit, offset]
+            rel = conn.execute(data_query, data_params)
+            df = rel.df()
+            df = df.replace({np.nan: None})
+            data = df.to_dict(orient="records")
+            return {
+                "columns": columns,
+                "data": data,
+                "total_rows": total_rows,
+                "limit": limit,
+                "offset": offset,
+            }
         finally:
             conn.close()
 

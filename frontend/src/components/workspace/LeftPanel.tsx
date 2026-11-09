@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
   Columns,
@@ -15,6 +16,8 @@ import {
   ChevronDown,
   ChevronRight,
   Brain,
+  Database,
+  Upload,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { AnalysisMemory, LabOverviewResponse, UserFile } from "@/lib/types";
@@ -26,17 +29,21 @@ interface LeftPanelProps {
 }
 
 export function LeftPanel({ overview, fileId }: LeftPanelProps) {
+  const router = useRouter();
   const {
     selectedJoinFileIds,
     toggleJoinFileId,
     injectArtifact,
   } = useWorkspaceStore();
 
+  const [allFiles, setAllFiles] = useState<UserFile[]>([]);
   const [workspaceFiles, setWorkspaceFiles] = useState<UserFile[]>([]);
   const [memories, setMemories] = useState<AnalysisMemory[]>([]);
   const [isSchemaOpen, setIsSchemaOpen] = useState(true);
   const [isJoinsOpen, setIsJoinsOpen] = useState(true);
   const [isMemoriesOpen, setIsMemoriesOpen] = useState(false);
+  const [isUploadingNew, setIsUploadingNew] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   useEffect(() => {
     loadSidebarData();
@@ -48,10 +55,26 @@ export function LeftPanel({ overview, fileId }: LeftPanelProps) {
         api.datasets.list().catch(() => []),
         api.memory.list(fileId).catch(() => []),
       ]);
+      setAllFiles(files);
       setWorkspaceFiles(files.filter((f) => f.id !== fileId));
       setMemories(mems);
     } catch (err) {
       console.error("Failed to load left panel data:", err);
+    }
+  };
+
+  const handleInlineUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      setIsUploadingNew(true);
+      setUploadError(null);
+      const res = await api.datasets.upload(file);
+      router.push(`/workspace/${res.id}`);
+    } catch (err: any) {
+      setUploadError(err.message || "Upload failed");
+    } finally {
+      setIsUploadingNew(false);
     }
   };
 
@@ -81,6 +104,48 @@ export function LeftPanel({ overview, fileId }: LeftPanelProps) {
         <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-400">
           RAM CACHED
         </span>
+      </div>
+
+      {/* Active Dataset Switcher & In-Workspace Upload */}
+      <div className="p-3 border-b border-zinc-800/80 space-y-2 bg-zinc-950/40">
+        <div className="flex items-center justify-between">
+          <label className="text-[10px] font-mono uppercase text-zinc-400 font-semibold flex items-center gap-1.5">
+            <Database className="w-3 h-3 text-emerald-400" />
+            Switch Dataset
+          </label>
+          <label className="cursor-pointer inline-flex items-center gap-1 text-[10px] font-mono text-emerald-400 hover:text-emerald-300 transition-colors">
+            <Upload className="w-3 h-3" />
+            <span>{isUploadingNew ? "Uploading..." : "+ Upload"}</span>
+            <input
+              type="file"
+              accept=".csv,.xlsx,.xls,.parquet"
+              className="hidden"
+              onChange={handleInlineUpload}
+              disabled={isUploadingNew}
+            />
+          </label>
+        </div>
+        <select
+          value={fileId}
+          onChange={(e) => {
+            if (e.target.value && e.target.value !== fileId) {
+              router.push(`/workspace/${e.target.value}`);
+            }
+          }}
+          className="w-full px-2.5 py-1.5 bg-zinc-900 border border-zinc-800 rounded-md text-xs text-zinc-200 font-mono focus:outline-none focus:border-emerald-500"
+        >
+          {allFiles.map((f) => (
+            <option key={f.id} value={f.id}>
+              {f.display_name} ({f.global_file?.row_count?.toLocaleString() || 0} rows)
+            </option>
+          ))}
+          {allFiles.every((f) => f.id !== fileId) && overview && (
+            <option value={fileId}>
+              {overview.filename} ({overview.row_count?.toLocaleString() || 0} rows)
+            </option>
+          )}
+        </select>
+        {uploadError && <p className="text-[10px] font-mono text-rose-400">{uploadError}</p>}
       </div>
 
       {/* Dataset Overview Summary */}

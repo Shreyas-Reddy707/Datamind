@@ -128,6 +128,26 @@ async def run_prediction_mission_endpoint(
     return record
 
 
+@router.get("/{prediction_id}", response_model=PredictionHistoryResponse)
+async def get_prediction_by_id_endpoint(
+    prediction_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Retrieve prediction job by ID with BOLA user ownership check."""
+    stmt = select(PredictionHistory).where(
+        PredictionHistory.id == prediction_id,
+        PredictionHistory.user_id == current_user.id,
+    )
+    job = await db.scalar(stmt)
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Prediction job record not found.",
+        )
+    return job
+
+
 @router.get("/{file_id}/jobs/{prediction_id}", response_model=PredictionHistoryResponse)
 async def get_prediction_job_endpoint(
     file_id: uuid.UUID,

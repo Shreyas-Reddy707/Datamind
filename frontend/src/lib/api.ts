@@ -287,9 +287,14 @@ export const api = {
     async overview(fileId: string): Promise<LabOverviewResponse> {
       return apiFetch<LabOverviewResponse>(`/api/v1/lab/${fileId}/overview`);
     },
-    async preview(fileId: string, limit = 50): Promise<{ columns: string[]; data: Record<string, unknown>[] }> {
-      return apiFetch<{ columns: string[]; data: Record<string, unknown>[] }>(
-        `/api/v1/lab/${fileId}/preview?limit=${limit}`
+    async preview(
+      fileId: string,
+      limit = 50,
+      search = ""
+    ): Promise<{ columns: string[]; data: Record<string, unknown>[]; total_rows?: number }> {
+      const searchParam = search ? `&search=${encodeURIComponent(search)}` : "";
+      return apiFetch<{ columns: string[]; data: Record<string, unknown>[]; total_rows?: number }>(
+        `/api/v1/lab/${fileId}/preview?limit=${limit}${searchParam}`
       );
     },
     async query(

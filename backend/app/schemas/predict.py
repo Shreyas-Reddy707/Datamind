@@ -13,6 +13,16 @@ class PredictDiagnoseRequest(BaseModel):
     target_col: str | None = Field(default=None, max_length=128)
 
 
+class PredictDiagnoseResponse(BaseModel):
+    can_proceed: bool
+    blockers: list[str]
+    warnings: list[str]
+    suggested_target: str | None = None
+    dropped_leakage_columns: list[str] = Field(default_factory=list)
+    row_count: int | None = None
+    column_count: int | None = None
+
+
 class PredictRunRequest(BaseModel):
     target_col: str | None = Field(default=None, max_length=128)
     task_type: Literal["classification", "regression", "clustering", "timeseries"] | None = Field(

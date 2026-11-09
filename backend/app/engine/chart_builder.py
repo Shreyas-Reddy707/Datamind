@@ -6,6 +6,7 @@ Anti-Vibecode Zinc/Slate/Emerald (#09090B / #18181B / #10B981) design system.
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 
@@ -58,9 +59,9 @@ class ChartBuilder:
 
     @classmethod
     def to_spec(cls, fig: go.Figure) -> dict[str, Any]:
-        """Convert Plotly Figure to JSON-serializable dict."""
+        """Convert Plotly Figure to JSON-serializable dict with pure primitives."""
         fig.update_layout(**DARK_THEME_LAYOUT)
-        return fig.to_dict()
+        return json.loads(fig.to_json())
 
     @classmethod
     def build_distribution(

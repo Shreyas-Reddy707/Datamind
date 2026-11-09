@@ -42,6 +42,8 @@ def _execute_ml_benchmark_sync(
         }
 
     prep = UniversalMLRunner.preprocess(df, final_target, task_type)
+    if prep.get("dropped_leakage_columns"):
+        diag["dropped_leakage_columns"] = prep["dropped_leakage_columns"]
 
     if task_type == "classification":
         results = UniversalMLRunner.run_classification(

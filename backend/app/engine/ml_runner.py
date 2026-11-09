@@ -64,6 +64,107 @@ class UniversalMLRunner:
         return "regression"
 
     @classmethod
+    def detect_leakage_columns(
+        cls, df: pd.DataFrame, target_col: str | None
+    ) -> list[str]:
+        """Detect columns that exhibit near-deterministic leakage (>0.95 correlation,
+
+        >0.98 mutual info / 1-to-1 status mapping, or post-outcome timestamps).
+        """
+        if not target_col or target_col not in df.columns or len(df) < 5:
+            return []
+
+        leakage_cols: list[str] = []
+        target_series = df[target_col].dropna()
+        if target_series.nunique() < 2:
+            return []
+
+        # Encode target numerically for correlation check
+        if pd.api.types.is_numeric_dtype(target_series):
+            y_num = target_series.astype(float)
+        else:
+            try:
+                y_num = pd.Series(
+                    LabelEncoder().fit_transform(target_series.astype(str)),
+                    index=target_series.index,
+                ).astype(float)
+            except Exception:
+                return []
+
+        for col in df.columns:
+            if col == target_col:
+                continue
+
+            col_lower = col.lower().strip()
+            target_lower = target_col.lower().strip()
+
+            # 1. Heuristic check for outcome/status post-event mirrors
+            if col_lower in (
+                "reservation_status",
+                "reservation_status_date",
+                "outcome_status",
+                "booking_status",
+            ) and ("cancel" in target_lower or "status" in target_lower):
+                leakage_cols.append(col)
+                continue
+
+            if ("date" in col_lower or "timestamp" in col_lower) and any(
+                term in col_lower for term in ["status", "cancel", "outcome"]
+            ):
+                leakage_cols.append(col)
+                continue
+
+            series = df[col]
+            valid_idx = series.dropna().index.intersection(y_num.index)
+            if len(valid_idx) < 10:
+                continue
+
+            s_valid = series.loc[valid_idx]
+            y_valid = y_num.loc[valid_idx]
+
+            # 2. Numeric / Label-Encoded Correlation (>0.95)
+            if pd.api.types.is_numeric_dtype(s_valid):
+                s_num = s_valid.astype(float)
+            else:
+                try:
+                    s_num = pd.Series(
+                        LabelEncoder().fit_transform(s_valid.astype(str)),
+                        index=valid_idx,
+                    ).astype(float)
+                except Exception as ex:
+                    logger.debug("Label encoding skipped for column %s: %s", col, ex)
+                    continue
+
+            std_s = s_num.std()
+            std_y = y_valid.std()
+            if std_s > 1e-6 and std_y > 1e-6:
+                corr = abs(s_num.corr(y_valid))
+                if not np.isnan(corr) and corr > 0.95:
+                    leakage_cols.append(col)
+                    continue
+
+            # 3. Categorical 1-to-1 Mapping / Contingency Purity (>0.98)
+            if not pd.api.types.is_numeric_dtype(s_valid) and s_valid.nunique() <= 50:
+                try:
+                    grouped = y_valid.groupby(s_valid)
+                    purities = []
+                    counts = []
+                    for _, group in grouped:
+                        if len(group) > 0:
+                            mode_freq = (group == group.mode().iloc[0]).mean()
+                            purities.append(mode_freq)
+                            counts.append(len(group))
+                    if counts and sum(counts) > 0:
+                        weighted_purity = sum(p * c for p, c in zip(purities, counts, strict=False)) / sum(counts)
+                        if weighted_purity > 0.98:
+                            leakage_cols.append(col)
+                            continue
+                except Exception as ex:
+                    logger.debug("Purity computation skipped for column %s: %s", col, ex)
+
+        return list(dict.fromkeys(leakage_cols))
+
+    @classmethod
     def diagnose_data(
         cls, df: pd.DataFrame, target_col: str | None = None
     ) -> dict[str, Any]:
@@ -108,11 +209,21 @@ class UniversalMLRunner:
                 if ratio > 10:
                     warnings.append(f"High class imbalance ({ratio:.1f}:1). Utilizing StratifiedKFold.")
 
+        effective_target = target_col or suggested_target
+        dropped_leakage = cls.detect_leakage_columns(df, effective_target) if effective_target else []
+        if dropped_leakage:
+            warnings.append(
+                f"Quarantined {len(dropped_leakage)} target leakage column(s): {', '.join(dropped_leakage)}."
+            )
+
         return {
             "can_proceed": len(blockers) == 0,
             "blockers": blockers,
             "warnings": warnings,
             "suggested_target": suggested_target or (target_col if target_col in df.columns else None),
+            "dropped_leakage_columns": dropped_leakage,
+            "row_count": row_count,
+            "column_count": len(df.columns),
         }
 
     @classmethod
@@ -121,6 +232,12 @@ class UniversalMLRunner:
     ) -> dict[str, Any]:
         """Data cleaning, null imputation, encoding, scaling, and train-test partitioning."""
         data = df.copy()
+
+        # 0. Detect and quarantine target leakage columns
+        dropped_leakage = cls.detect_leakage_columns(data, target_col)
+        if dropped_leakage:
+            logger.info("Quarantined %d target leakage columns: %s", len(dropped_leakage), dropped_leakage)
+            data.drop(columns=dropped_leakage, inplace=True, errors="ignore")
 
         # 1. Drop columns with > 60% missing values
         null_mask = data.isnull().mean() > 0.6
@@ -179,7 +296,11 @@ class UniversalMLRunner:
             X_final = pd.DataFrame()
 
         if task == "clustering":
-            return {"X": X_final, "feature_names": X.columns.tolist()}
+            return {
+                "X": X_final,
+                "feature_names": X.columns.tolist(),
+                "dropped_leakage_columns": dropped_leakage,
+            }
 
         X_train, X_test, y_train, y_test = train_test_split(
             X_final, y, test_size=0.2, random_state=42
@@ -190,6 +311,7 @@ class UniversalMLRunner:
             "y_train": y_train,
             "y_test": y_test,
             "feature_names": X.columns.tolist(),
+            "dropped_leakage_columns": dropped_leakage,
         }
 
     @classmethod

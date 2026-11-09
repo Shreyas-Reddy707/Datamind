@@ -24,9 +24,10 @@ export interface PredictDiagnoseResponse {
   blockers: string[];
   warnings: string[];
   suggested_target: string | null;
+  dropped_leakage_columns?: string[];
   target_info?: Record<string, unknown> | null;
-  row_count: number;
-  column_count: number;
+  row_count?: number;
+  column_count?: number;
 }
 
 export interface PredictRunRequest {

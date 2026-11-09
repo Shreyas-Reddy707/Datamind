@@ -263,6 +263,28 @@ export function PredictionLab({ fileId, columns }: PredictionLabProps) {
         </div>
       )}
 
+      {/* Target Leakage Protection Alert / Badge */}
+      {((activeRun?.diagnostics_json as any)?.dropped_leakage_columns?.length > 0 ||
+        (diagnostics?.dropped_leakage_columns && diagnostics.dropped_leakage_columns.length > 0)) && (
+        <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/10 flex items-start gap-3">
+          <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+          <div className="space-y-1 font-mono text-xs">
+            <div className="flex items-center gap-2">
+              <span className="font-bold uppercase text-amber-400">Target Leakage Protection Active</span>
+              <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-semibold border border-amber-500/30">
+                {((activeRun?.diagnostics_json as any)?.dropped_leakage_columns || diagnostics?.dropped_leakage_columns || []).length} Column(s) Quarantined
+              </span>
+            </div>
+            <p className="text-zinc-300 text-[11px] leading-relaxed">
+              Autonomous data integrity quarantined target leakage columns with &gt;0.95 correlation / direct status mirror:{" "}
+              <span className="text-amber-300 font-semibold">
+                {((activeRun?.diagnostics_json as any)?.dropped_leakage_columns || diagnostics?.dropped_leakage_columns || []).join(", ")}
+              </span>.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Active Run Status Badge */}
       {activeRun && (activeRun.status === "queued" || activeRun.status === "running") && (
         <div className="p-4 rounded-xl border border-cyan-500/30 bg-cyan-500/5 flex items-center justify-between">

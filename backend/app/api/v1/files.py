@@ -7,6 +7,7 @@ reference-counted deletion, DuckDB profiling, instant stats, and multi-file join
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import uuid
 
@@ -32,6 +33,9 @@ from app.schemas.files import (
 )
 from app.security.error_handler import AppError
 from app.security.rate_limiter import RateLimiter
+from app.workers.tasks import extract_learned_patterns_task
+
+logger = logging.getLogger("datamind.api.v1.files")
 
 router = APIRouter(prefix="/files", tags=["Datasets & Files"])
 
@@ -97,6 +101,17 @@ async def upload_file(
     )
     db.add(audit)
     await db.commit()
+
+    # 5. Auto-trigger background PatternLearner pattern extraction
+    try:
+        await extract_learned_patterns_task.kiq(
+            str(current_user.id),
+            str(user_file.id),
+            analysis_summary=f"Dataset uploaded: {filename}",
+            query="",
+        )
+    except Exception as e:
+        logger.warning("Could not dispatch background pattern extraction task: %s", e)
 
     # Eager load global_file
     user_file.global_file = global_file

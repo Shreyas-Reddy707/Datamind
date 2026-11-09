@@ -69,7 +69,11 @@ export function CenterLab({ overview, fileId }: CenterLabProps) {
   const [previewData, setPreviewData] = useState<{
     columns: string[];
     data: Record<string, unknown>[];
+    total_rows?: number;
   } | null>(null);
+  const [previewSearch, setPreviewSearch] = useState("");
+  const [previewLimit, setPreviewLimit] = useState(25);
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false);
 
   // Columns list
   const columns = overview ? Object.keys(overview.schema.columns) : [];
@@ -91,9 +95,21 @@ export function CenterLab({ overview, fileId }: CenterLabProps) {
     }
   }, [injectedArtifact]);
 
+  const loadPreviewData = async (limit = previewLimit, search = previewSearch) => {
+    try {
+      setIsPreviewLoading(true);
+      const res = await api.lab.preview(fileId, limit, search);
+      setPreviewData(res);
+    } catch (err) {
+      console.error("Failed to load preview data:", err);
+    } finally {
+      setIsPreviewLoading(false);
+    }
+  };
+
   // Load preview data on mount
   useEffect(() => {
-    api.lab.preview(fileId, 25).then(setPreviewData).catch(console.error);
+    loadPreviewData(previewLimit, "");
   }, [fileId]);
 
   // Load forensics when tab clicked
@@ -291,23 +307,74 @@ export function CenterLab({ overview, fileId }: CenterLabProps) {
               </div>
             </div>
 
-            {/* Preview Data Table */}
-            {previewData && (
-              <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-5 space-y-4">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-mono uppercase tracking-wider text-zinc-300 flex items-center gap-2">
-                    <TableIcon className="w-4 h-4 text-emerald-400" />
-                    Parquet Vector Slice Preview (First {previewData.data.length} Rows)
+            {/* Interactive Data Explorer / Row Values Table */}
+            <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-5 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <TableIcon className="w-4 h-4 text-emerald-400" />
+                  <h4 className="text-xs font-mono uppercase tracking-wider text-zinc-300 font-semibold">
+                    Interactive Data Explorer
                   </h4>
-                  <span className="text-[11px] font-mono text-zinc-500">
-                    Showing {previewData.columns.length} columns
-                  </span>
+                  {previewData?.total_rows !== undefined && (
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-zinc-900 text-zinc-400 border border-zinc-800">
+                      {previewData.total_rows.toLocaleString()} Rows Total
+                    </span>
+                  )}
                 </div>
 
-                <div className="overflow-x-auto border border-zinc-800 rounded-lg max-h-72">
+                <div className="flex items-center gap-2">
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder="Search values..."
+                      value={previewSearch}
+                      onChange={(e) => setPreviewSearch(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          loadPreviewData(previewLimit, previewSearch);
+                        }
+                      }}
+                      className="pl-8 pr-3 py-1 bg-zinc-900 border border-zinc-800 rounded-md text-xs font-mono text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-emerald-500 w-36 sm:w-48"
+                    />
+                  </div>
+
+                  <select
+                    value={previewLimit}
+                    onChange={(e) => {
+                      const newLimit = Number(e.target.value);
+                      setPreviewLimit(newLimit);
+                      loadPreviewData(newLimit, previewSearch);
+                    }}
+                    className="px-2 py-1 bg-zinc-900 border border-zinc-800 rounded-md text-xs font-mono text-zinc-300 focus:outline-none focus:border-emerald-500"
+                  >
+                    <option value={25}>25 rows</option>
+                    <option value={50}>50 rows</option>
+                    <option value={100}>100 rows</option>
+                  </select>
+
+                  <button
+                    onClick={() => loadPreviewData(previewLimit, previewSearch)}
+                    disabled={isPreviewLoading}
+                    className="p-1.5 rounded-md bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-zinc-400 hover:text-white transition-colors disabled:opacity-50"
+                    title="Refresh table"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isPreviewLoading ? "animate-spin text-emerald-400" : ""}`} />
+                  </button>
+                </div>
+              </div>
+
+              {isPreviewLoading && !previewData ? (
+                <div className="p-8 text-center text-xs font-mono text-zinc-500 flex items-center justify-center gap-2">
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+                  Loading vectorized row slice...
+                </div>
+              ) : previewData && previewData.data.length > 0 ? (
+                <div className="overflow-x-auto border border-zinc-800 rounded-lg max-h-80">
                   <table className="w-full text-left text-xs font-mono">
-                    <thead className="bg-zinc-900 sticky top-0 border-b border-zinc-800">
+                    <thead className="bg-zinc-900 sticky top-0 border-b border-zinc-800 z-10">
                       <tr>
+                        <th className="py-2 px-3 font-semibold text-zinc-500 w-12 text-center">#</th>
                         {previewData.columns.map((c) => (
                           <th key={c} className="py-2.5 px-3 font-semibold text-zinc-300 truncate">
                             {c}
@@ -317,10 +384,11 @@ export function CenterLab({ overview, fileId }: CenterLabProps) {
                     </thead>
                     <tbody className="divide-y divide-zinc-800/60">
                       {previewData.data.map((row, i) => (
-                        <tr key={i} className="hover:bg-zinc-900/40">
+                        <tr key={i} className="hover:bg-zinc-900/40 transition-colors">
+                          <td className="py-2 px-3 text-zinc-600 text-center font-mono text-[11px]">{i + 1}</td>
                           {previewData.columns.map((c) => (
-                            <td key={c} className="py-2 px-3 text-zinc-400 truncate max-w-[200px]">
-                              {String(row[c] ?? "—")}
+                            <td key={c} className="py-2 px-3 text-zinc-300 truncate max-w-[220px]">
+                              {row[c] !== null && row[c] !== undefined ? String(row[c]) : <span className="text-zinc-600 italic">null</span>}
                             </td>
                           ))}
                         </tr>
@@ -328,8 +396,12 @@ export function CenterLab({ overview, fileId }: CenterLabProps) {
                     </tbody>
                   </table>
                 </div>
-              </div>
-            )}
+              ) : (
+                <div className="p-8 text-center text-xs font-mono text-zinc-500 border border-dashed border-zinc-800 rounded-lg">
+                  No matching row records found.
+                </div>
+              )}
+            </div>
           </div>
         )}
 
