@@ -37,7 +37,40 @@ export function PredictionLab({ fileId, columns }: PredictionLabProps) {
 
   useEffect(() => {
     loadPredictionHistory();
-  }, [fileId]);
+
+    const candidateTarget =
+      columns.find((c) => {
+        const cl = c.toLowerCase();
+        return (
+          cl === "is_canceled" ||
+          cl === "canceled" ||
+          cl === "churn" ||
+          cl === "target" ||
+          cl === "label" ||
+          cl.startsWith("is_") ||
+          cl.endsWith("_churn") ||
+          cl === "adr"
+        );
+      }) || (columns.length > 0 ? columns[columns.length - 1] : "");
+
+    const targetToDiagnose = selectedTarget || candidateTarget;
+    if (targetToDiagnose) {
+      setSelectedTarget(targetToDiagnose);
+    }
+
+    // Auto-run diagnosis on load
+    api.predict
+      .diagnose(fileId, { target_col: targetToDiagnose || null })
+      .then((res) => {
+        setDiagnostics(res);
+        if (res.suggested_target && !targetToDiagnose) {
+          setSelectedTarget(res.suggested_target);
+        }
+      })
+      .catch((err) => {
+        console.error("Auto-diagnosis failed:", err);
+      });
+  }, [fileId, columns]);
 
   // Polling active prediction run
   useEffect(() => {

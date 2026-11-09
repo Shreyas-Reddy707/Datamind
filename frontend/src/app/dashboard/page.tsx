@@ -11,11 +11,17 @@ import {
   ExternalLink,
   LogOut,
   User as UserIcon,
-  HardDrive,
   RefreshCw,
   AlertCircle,
   FileText,
   Search,
+  Folder,
+  FolderOpen,
+  ShieldAlert,
+  BarChart3,
+  Activity,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { User, UserFile } from "@/lib/types";
@@ -33,6 +39,64 @@ export default function DashboardPage() {
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [isDragging, setIsDragging] = useState(false);
+  const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
+
+  const toggleFolder = (folderName: string) => {
+    setExpandedFolders((prev) => ({
+      ...prev,
+      [folderName]: prev[folderName] === false ? true : false,
+    }));
+  };
+
+  const formatDomain = (domain?: string | null) => {
+    if (!domain) return "General Analytics";
+    const d = domain.toLowerCase();
+    if (
+      d.includes("booking") ||
+      d.includes("hospitality") ||
+      d.includes("hotel") ||
+      d.includes("commerce")
+    ) {
+      return "E-Commerce & Hospitality";
+    }
+    if (
+      d.includes("finan") ||
+      d.includes("bank") ||
+      d.includes("stock") ||
+      d.includes("crypto") ||
+      d.includes("credit")
+    ) {
+      return "Finance & Trading";
+    }
+    if (
+      d.includes("health") ||
+      d.includes("medic") ||
+      d.includes("clinic") ||
+      d.includes("bio")
+    ) {
+      return "Healthcare & Clinical";
+    }
+    if (
+      d.includes("logist") ||
+      d.includes("supply") ||
+      d.includes("deliver")
+    ) {
+      return "Logistics & Operations";
+    }
+    return `${domain.charAt(0).toUpperCase() + domain.slice(1)} Analytics`;
+  };
+
+  const filteredDatasets = datasets.filter((d) =>
+    d.display_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    d.global_file.detected_domain?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const domainGroups = filteredDatasets.reduce((acc, dataset) => {
+    const domainKey = formatDomain(dataset.global_file?.detected_domain);
+    if (!acc[domainKey]) acc[domainKey] = [];
+    acc[domainKey].push(dataset);
+    return acc;
+  }, {} as Record<string, UserFile[]>);
 
   useEffect(() => {
     loadDashboardData();
@@ -118,11 +182,6 @@ export default function DashboardPage() {
       router.push("/login");
     }
   };
-
-  const filteredDatasets = datasets.filter((d) =>
-    d.display_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    d.global_file.detected_domain?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
 
   return (
     <div className="min-h-screen bg-[#09090B] text-zinc-100 flex flex-col">
@@ -234,19 +293,19 @@ export default function DashboardPage() {
           )}
         </section>
 
-        {/* Datasets Section */}
-        <section className="space-y-4">
+        {/* Datasets Section with Domain Folders */}
+        <section className="space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h2 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
-                <FileSpreadsheet className="w-5 h-5 text-emerald-400" />
-                Workspace Datasets
+                <Folder className="w-5 h-5 text-emerald-400" />
+                Forensic Dataset Folders
                 <span className="text-xs font-mono px-2 py-0.5 rounded-full bg-zinc-900 border border-zinc-800 text-zinc-400">
-                  {datasets.length}
+                  {datasets.length} Total
                 </span>
               </h2>
               <p className="text-xs text-zinc-400 font-mono mt-0.5">
-                Vectorized Parquet instances mounted in DuckDB memory
+                Domain-clustered Parquet lakes with direct workspace deep-links
               </p>
             </div>
 
@@ -264,8 +323,9 @@ export default function DashboardPage() {
           </div>
 
           {isLoading ? (
-            <div className="p-12 text-center text-xs font-mono text-zinc-500">
-              [Loading Workspace Datasets...]
+            <div className="p-12 text-center text-xs font-mono text-zinc-500 flex items-center justify-center gap-2">
+              <RefreshCw className="w-4 h-4 animate-spin text-emerald-400" />
+              Loading Workspace Datasets...
             </div>
           ) : filteredDatasets.length === 0 ? (
             <div className="p-12 text-center border border-zinc-800/80 rounded-2xl bg-zinc-950/40 space-y-2">
@@ -275,74 +335,156 @@ export default function DashboardPage() {
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-              {filteredDatasets.map((dataset) => {
-                const gf = dataset.global_file;
-                const sizeKb = Math.round(gf.file_size_bytes / 1024);
-
+            <div className="space-y-6">
+              {Object.entries(domainGroups).map(([domainName, groupDatasets]) => {
+                const isOpen = expandedFolders[domainName] !== false;
                 return (
-                  <TiltCard3D key={dataset.id} className="p-5 flex flex-col justify-between">
-                    <div>
-                      <div className="flex items-start justify-between gap-2 mb-3">
-                        <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center shrink-0">
-                          <FileText className="w-4 h-4 text-emerald-400" />
+                  <div
+                    key={domainName}
+                    className="rounded-2xl border border-zinc-800/90 bg-zinc-950/60 overflow-hidden shadow-lg"
+                  >
+                    {/* Domain Folder Header */}
+                    <button
+                      onClick={() => toggleFolder(domainName)}
+                      className="w-full px-5 py-3.5 bg-zinc-900/50 hover:bg-zinc-900 transition-colors flex items-center justify-between border-b border-zinc-800/80 text-left cursor-pointer"
+                    >
+                      <div className="flex items-center gap-3">
+                        {isOpen ? (
+                          <FolderOpen className="w-5 h-5 text-emerald-400" />
+                        ) : (
+                          <Folder className="w-5 h-5 text-zinc-400" />
+                        )}
+                        <div>
+                          <span className="text-sm font-semibold text-white font-mono">
+                            {domainName}
+                          </span>
+                          <span className="ml-2.5 text-[11px] font-mono text-zinc-400">
+                            ({groupDatasets.length} {groupDatasets.length === 1 ? "dataset" : "datasets"})
+                          </span>
                         </div>
-                        <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded border border-zinc-800 bg-zinc-900 text-zinc-400">
-                          {gf.detected_domain || "general"}
+                      </div>
+                      <div className="flex items-center gap-2 text-zinc-400">
+                        <span className="text-[10px] font-mono uppercase text-zinc-500">
+                          {isOpen ? "Collapse" : "Expand"}
                         </span>
+                        {isOpen ? (
+                          <ChevronDown className="w-4 h-4" />
+                        ) : (
+                          <ChevronRight className="w-4 h-4" />
+                        )}
                       </div>
+                    </button>
 
-                      <h3
-                        className="text-sm font-semibold text-white truncate mb-1"
-                        title={dataset.display_name}
-                      >
-                        {dataset.display_name}
-                      </h3>
+                    {/* Folder Datasets Grid */}
+                    {isOpen && (
+                      <div className="p-5 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                        {groupDatasets.map((dataset) => {
+                          const gf = dataset.global_file;
+                          const sizeKb = Math.round(gf.file_size_bytes / 1024);
 
-                      <div className="grid grid-cols-2 gap-2 text-xs font-mono text-zinc-400 mt-4 pt-3 border-t border-zinc-800/80">
-                        <div>
-                          <span className="text-[10px] text-zinc-500 block uppercase">Rows</span>
-                          <span className="text-zinc-200 font-semibold">
-                            {gf.row_count?.toLocaleString() ?? "—"}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-[10px] text-zinc-500 block uppercase">Columns</span>
-                          <span className="text-zinc-200 font-semibold">
-                            {gf.col_count ?? "—"}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-[10px] text-zinc-500 block uppercase">Size</span>
-                          <span className="text-zinc-200 font-semibold">{sizeKb} KB</span>
-                        </div>
-                        <div>
-                          <span className="text-[10px] text-zinc-500 block uppercase">Format</span>
-                          <span className="text-zinc-200 uppercase font-semibold">
-                            {gf.original_format}
-                          </span>
-                        </div>
+                          return (
+                            <div
+                              key={dataset.id}
+                              className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 flex flex-col justify-between hover:border-zinc-700 transition-all shadow-md group"
+                            >
+                              <div>
+                                <div className="flex items-start justify-between gap-2 mb-2">
+                                  <Link
+                                    href={`/workspace/${dataset.id}`}
+                                    className="font-semibold text-sm text-white hover:text-emerald-400 transition-colors truncate block flex-1"
+                                    title={dataset.display_name}
+                                  >
+                                    {dataset.display_name}
+                                  </Link>
+                                  <button
+                                    onClick={() => handleDelete(dataset.id, dataset.display_name)}
+                                    className="p-1 text-zinc-500 hover:text-rose-400 hover:bg-zinc-800 rounded transition-colors"
+                                    title="Delete Dataset"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+
+                                <div className="flex items-center gap-2 mb-4">
+                                  <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded border border-zinc-800 bg-zinc-950 text-zinc-400">
+                                    {gf.original_format}
+                                  </span>
+                                  <span className="text-[10px] font-mono px-2 py-0.5 rounded border border-emerald-500/20 bg-emerald-500/10 text-emerald-400">
+                                    SHA-256 DEDUP
+                                  </span>
+                                </div>
+
+                                {/* Metadata Grid */}
+                                <div className="grid grid-cols-3 gap-2 text-xs font-mono text-zinc-400 py-3 border-y border-zinc-800/80">
+                                  <div>
+                                    <span className="text-[10px] text-zinc-500 block uppercase">Rows</span>
+                                    <span className="text-zinc-200 font-semibold">
+                                      {gf.row_count?.toLocaleString() ?? "—"}
+                                    </span>
+                                  </div>
+                                  <div>
+                                    <span className="text-[10px] text-zinc-500 block uppercase">Cols</span>
+                                    <span className="text-zinc-200 font-semibold">
+                                      {gf.col_count ?? "—"}
+                                    </span>
+                                  </div>
+                                  <div>
+                                    <span className="text-[10px] text-zinc-500 block uppercase">Size</span>
+                                    <span className="text-zinc-200 font-semibold">{sizeKb} KB</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* 4 Direct-Launch Action Buttons */}
+                              <div className="mt-4 pt-2 space-y-1.5">
+                                <span className="text-[10px] font-mono uppercase tracking-wider text-zinc-500 block">
+                                  Direct Workspace Launchers
+                                </span>
+                                <div className="grid grid-cols-2 gap-1.5 font-mono text-[11px]">
+                                  <Link
+                                    href={`/workspace/${dataset.id}?tab=forensic`}
+                                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 hover:border-amber-500/50 hover:bg-amber-500/10 text-zinc-300 hover:text-amber-300 transition-colors"
+                                  >
+                                    <ShieldAlert className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                                    <span className="truncate">Forensics</span>
+                                  </Link>
+                                  <Link
+                                    href={`/workspace/${dataset.id}?tab=viz`}
+                                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 hover:border-emerald-500/50 hover:bg-emerald-500/10 text-zinc-300 hover:text-emerald-300 transition-colors"
+                                  >
+                                    <BarChart3 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                                    <span className="truncate">Charts</span>
+                                  </Link>
+                                  <Link
+                                    href={`/workspace/${dataset.id}?tab=predict`}
+                                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 hover:border-cyan-500/50 hover:bg-cyan-500/10 text-zinc-300 hover:text-cyan-300 transition-colors"
+                                  >
+                                    <Activity className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                                    <span className="truncate">AutoML</span>
+                                  </Link>
+                                  <Link
+                                    href={`/workspace/${dataset.id}?tab=overview`}
+                                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 hover:border-purple-500/50 hover:bg-purple-500/10 text-zinc-300 hover:text-purple-300 transition-colors"
+                                  >
+                                    <Database className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                                    <span className="truncate">Explorer</span>
+                                  </Link>
+                                </div>
+
+                                <Link
+                                  href={`/workspace/${dataset.id}`}
+                                  className="w-full mt-2 flex items-center justify-center gap-1.5 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-semibold text-xs font-mono transition-colors shadow-sm"
+                                >
+                                  <span>Open Full Workspace</span>
+                                  <ExternalLink className="w-3.5 h-3.5" />
+                                </Link>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
-                    </div>
-
-                    <div className="mt-5 pt-4 border-t border-zinc-800/80 flex items-center justify-between">
-                      <button
-                        onClick={() => handleDelete(dataset.id, dataset.display_name)}
-                        className="p-1.5 text-zinc-500 hover:text-rose-400 hover:bg-zinc-800 rounded transition-colors"
-                        title="Delete Dataset"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-
-                      <Link
-                        href={`/workspace/${dataset.id}`}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-black text-xs font-semibold font-mono transition-colors shadow-sm"
-                      >
-                        <span>Open in IDE</span>
-                        <ExternalLink className="w-3.5 h-3.5" />
-                      </Link>
-                    </div>
-                  </TiltCard3D>
+                    )}
+                  </div>
                 );
               })}
             </div>

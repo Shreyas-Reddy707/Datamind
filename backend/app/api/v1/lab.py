@@ -257,7 +257,12 @@ async def generate_chart_spec_endpoint(
             detail="Failed to generate chart specification for the provided column dimensions.",
         )
 
-    return spec
+    return {
+        "plotly_spec": spec,
+        "spec": spec,
+        "data": spec.get("data", []),
+        "layout": spec.get("layout", {}),
+    }
 
 
 @router.post("/{file_id}/analyze", response_model=AnalysisMemoryResponse)

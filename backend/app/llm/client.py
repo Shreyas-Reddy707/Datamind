@@ -12,6 +12,7 @@ import hashlib
 import logging
 import math
 import os
+import time
 from collections.abc import AsyncGenerator
 from typing import Any
 
@@ -29,6 +30,8 @@ logger = logging.getLogger("datamind.llm.client")
 
 litellm.telemetry = False
 litellm.drop_params = True
+litellm.suppress_debug_info = True
+litellm.set_verbose = False
 
 
 class LLMClient:
@@ -51,6 +54,7 @@ class LLMClient:
         self.base_url = base_url or settings.OLLAMA_BASE_URL
         self.quick_timeout = quick_timeout
         self.deep_timeout = deep_timeout
+        self._ollama_embed_unavailable_until: float = 0.0
 
     async def chat_completion(
         self,
@@ -157,30 +161,36 @@ class LLMClient:
     async def get_embedding(self, text: str) -> list[float]:
         """
         Generate 768-dimensional normalized embedding matching Vector(768).
-        Tries local Ollama/LiteLLM first; falls back to deterministic hash projection.
+        Tries local Ollama/LiteLLM first; falls back to deterministic hash projection with circuit breaker.
         """
         clean_text = text.strip()
         if not clean_text:
             return [0.0] * 768
 
-        try:
-            # Attempt LiteLLM / Ollama embedding
-            emb_model = f"ollama/{settings.EMBEDDING_MODEL}"
-            resp = await asyncio.wait_for(
-                litellm.aembedding(
-                    model=emb_model,
-                    input=[clean_text],
-                    api_base=self.base_url,
-                ),
-                timeout=5,
-            )
-            raw_vec = resp.data[0]["embedding"]
-            if len(raw_vec) == 768:
-                return self._normalize_vector(raw_vec)
-        except Exception as exc:
-            logger.debug("Ollama embedding unavailable (%s), falling back to projection", exc)
+        now = time.time()
+        # Circuit breaker: if Ollama embedding failed within the last 60s, skip immediately
+        if now >= self._ollama_embed_unavailable_until:
+            try:
+                # Attempt LiteLLM / Ollama embedding
+                emb_model = f"ollama/{settings.EMBEDDING_MODEL}"
+                resp = await asyncio.wait_for(
+                    litellm.aembedding(
+                        model=emb_model,
+                        input=[clean_text],
+                        api_base=self.base_url,
+                    ),
+                    timeout=5,
+                )
+                raw_vec = resp.data[0]["embedding"]
+                if len(raw_vec) == 768:
+                    return self._normalize_vector(raw_vec)
+            except Exception as exc:
+                self._ollama_embed_unavailable_until = now + 60.0
+                logger.debug(
+                    "Ollama embedding unavailable (%s); activating 60s circuit breaker", exc
+                )
 
-        # Deterministic 768-D pseudo-random projection based on SHA-256 + sha512 seeds
+        # Deterministic 768-D pseudo-random projection based on SHA-256 + sha512 seeds (<1ms)
         return self.generate_deterministic_embedding(clean_text, dimensions=768)
 
     @staticmethod

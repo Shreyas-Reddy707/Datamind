@@ -78,15 +78,101 @@ export function CenterLab({ overview, fileId }: CenterLabProps) {
   // Columns list
   const columns = overview ? Object.keys(overview.schema.columns) : [];
 
-  // Initialize defaults
+  // Auto-Select Default Best Settings & Generate Chart Per Uploaded File
   useEffect(() => {
-    if (columns.length > 0 && !xCol) {
-      setXCol(columns[0]);
-      if (columns.length > 1) {
-        setYCol(columns[1]);
-      }
+    if (!overview || !overview.schema?.columns) return;
+    const cols = overview.schema.columns;
+    const colNames = Object.keys(cols);
+    if (colNames.length === 0) return;
+
+    const profile = overview.profile;
+    const numCols = profile?.numeric_columns?.length
+      ? profile.numeric_columns
+      : colNames.filter((c) => {
+          const t = (cols[c]?.type || "").toUpperCase();
+          return (
+            t.includes("INT") ||
+            t.includes("FLOAT") ||
+            t.includes("DOUBLE") ||
+            t.includes("NUMERIC")
+          );
+        });
+
+    const catCols = profile?.categorical_columns?.length
+      ? profile.categorical_columns
+      : colNames.filter((c) => !numCols.includes(c));
+
+    // 1. Look for low-to-medium cardinality categorical column (2-20 distinct values)
+    let bestCatCol = catCols.find((c) => {
+      const dc = profile?.columns?.[c]?.distinct_count;
+      return dc !== undefined ? dc >= 2 && dc <= 20 : false;
+    });
+
+    if (!bestCatCol && catCols.length > 0) {
+      bestCatCol =
+        catCols.find(
+          (c) =>
+            !c.toLowerCase().includes("id") &&
+            !c.toLowerCase().includes("date")
+        ) || catCols[0];
     }
-  }, [columns]);
+
+    // Look for a numeric metric column (e.g. adr, lead_time, price, amount, sales)
+    let bestNumCol =
+      numCols.find((c) => {
+        const cl = c.toLowerCase();
+        return (
+          !cl.includes("id") &&
+          !cl.includes("year") &&
+          !cl.includes("is_") &&
+          (cl.includes("adr") ||
+            cl.includes("time") ||
+            cl.includes("price") ||
+            cl.includes("amount") ||
+            cl.includes("score") ||
+            cl.includes("total") ||
+            cl.includes("val"))
+        );
+      }) || numCols[0];
+
+    let targetChartType: LabChartType = "distribution";
+    let targetX = colNames[0];
+    let targetY = "";
+
+    if (bestCatCol && bestNumCol) {
+      targetChartType = "bar";
+      targetX = bestCatCol;
+      targetY = bestNumCol;
+    } else if (numCols.length >= 2) {
+      targetChartType = "heatmap";
+      targetX = numCols[0];
+      targetY = numCols[1];
+    } else if (numCols.length === 1) {
+      targetChartType = "distribution";
+      targetX = numCols[0];
+    }
+
+    setSelectedChartType(targetChartType);
+    setXCol(targetX);
+    setYCol(targetY);
+
+    // Auto-trigger visualize on initial load or dataset switch
+    api.lab
+      .visualize(
+        fileId,
+        targetChartType,
+        targetX || undefined,
+        targetY || undefined
+      )
+      .then((res) => {
+        const specToSet =
+          (res as any)?.plotly_spec || (res as any)?.spec || res;
+        setChartSpec(specToSet);
+      })
+      .catch((err) => {
+        console.error("Auto-visualization load failed:", err);
+      });
+  }, [fileId, overview]);
 
   // Handle injected artifact
   useEffect(() => {
@@ -142,7 +228,8 @@ export function CenterLab({ overview, fileId }: CenterLabProps) {
         yCol || undefined,
         colorCol || undefined
       );
-      setChartSpec(res.plotly_spec);
+      const specToSet = (res as any)?.plotly_spec || (res as any)?.spec || res;
+      setChartSpec(specToSet);
     } catch (err: any) {
       console.error("Chart generation failed:", err);
       setChartError(err.message || "Failed to generate chart visualization.");

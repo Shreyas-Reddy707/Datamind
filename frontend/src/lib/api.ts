@@ -316,8 +316,18 @@ export const api = {
       xCol?: string,
       yCol?: string,
       colorCol?: string
-    ): Promise<{ plotly_spec: Record<string, unknown> }> {
-      return apiFetch<{ plotly_spec: Record<string, unknown> }>(
+    ): Promise<{
+      plotly_spec: Record<string, unknown>;
+      spec: Record<string, unknown>;
+      data: any[];
+      layout: any;
+    }> {
+      return apiFetch<{
+        plotly_spec: Record<string, unknown>;
+        spec: Record<string, unknown>;
+        data: any[];
+        layout: any;
+      }>(
         `/api/v1/lab/${fileId}/visualize`,
         {
           method: "POST",

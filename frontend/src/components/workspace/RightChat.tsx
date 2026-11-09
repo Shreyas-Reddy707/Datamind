@@ -12,6 +12,8 @@ import {
   Layers,
   ArrowUpRight,
   RefreshCw,
+  X,
+  Minus,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { ChatMessage } from "@/lib/types";
@@ -36,6 +38,8 @@ export function RightChat({ fileId }: RightChatProps) {
     activeTier,
     setActiveTier,
     injectArtifact,
+    isChatOpen,
+    setIsChatOpen,
   } = useWorkspaceStore();
 
   const [inputMessage, setInputMessage] = useState("");
@@ -161,28 +165,59 @@ export function RightChat({ fileId }: RightChatProps) {
     "List top 5 data quality risks",
   ];
 
+  if (!isChatOpen) {
+    return (
+      <button
+        onClick={() => setIsChatOpen(true)}
+        className="fixed right-6 bottom-6 z-50 flex items-center gap-2.5 px-4 py-2.5 rounded-full bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-semibold text-xs shadow-2xl shadow-emerald-500/30 border border-emerald-400/50 transition-all hover:scale-105 active:scale-95 font-mono cursor-pointer"
+        title="Open AI Analyst Chat"
+      >
+        <Sparkles className="w-4 h-4 fill-zinc-950" />
+        <span>💬 AI Analyst</span>
+        {isStreaming && (
+          <span className="flex h-2 w-2 relative">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-500"></span>
+          </span>
+        )}
+      </button>
+    );
+  }
+
   return (
-    <aside className="w-96 border-l border-zinc-800/80 bg-zinc-950/70 flex flex-col h-full overflow-hidden">
+    <aside className="w-[420px] max-w-[92vw] fixed right-4 bottom-4 top-16 z-50 flex flex-col rounded-2xl border border-zinc-800 bg-zinc-950/95 backdrop-blur-xl shadow-2xl shadow-black/80 overflow-hidden animate-in fade-in slide-in-from-right-4 duration-200">
       {/* Chat Top Header */}
-      <div className="p-4 border-b border-zinc-800/80 flex items-center justify-between select-none">
+      <div className="p-3.5 border-b border-zinc-800/80 flex items-center justify-between select-none bg-zinc-900/60">
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center">
             <BrainCircuit className="w-4 h-4 text-emerald-400" />
           </div>
           <div>
-            <h3 className="text-xs font-mono font-bold text-white">Cognitive Brain</h3>
+            <h3 className="text-xs font-mono font-bold text-white flex items-center gap-1.5">
+              <span>Cognitive Brain</span>
+              <span className="text-[10px] text-emerald-400 font-normal">v2</span>
+            </h3>
             <span className="text-[10px] font-mono text-zinc-500">
               3-Tier LangGraph Multi-Agent
             </span>
           </div>
         </div>
 
-        {/* Tier Status Indicator */}
-        <div className="flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-mono border border-zinc-800 bg-zinc-900">
-          <Zap className="w-3 h-3 text-emerald-400" />
-          <span className="text-zinc-300">
-            {activeTier === 3 ? "Tier 3: LRM" : activeTier === 2 ? "Tier 2: Analyst" : "Tier 1: Instant"}
-          </span>
+        {/* Tier Status Indicator & Controls */}
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-mono border border-zinc-800 bg-zinc-900">
+            <Zap className="w-3 h-3 text-emerald-400" />
+            <span className="text-zinc-300">
+              {activeTier === 3 ? "Tier 3: LRM" : activeTier === 2 ? "Tier 2: Analyst" : "Tier 1: Instant"}
+            </span>
+          </div>
+          <button
+            onClick={() => setIsChatOpen(false)}
+            className="p-1 rounded-md text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
+            title="Minimize Chat"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
       </div>
 

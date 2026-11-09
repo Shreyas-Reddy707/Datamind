@@ -33,9 +33,12 @@ interface PlotlyCanvasProps {
 export function PlotlyCanvas({ spec, title }: PlotlyCanvasProps) {
   const [is3DMode, setIs3DMode] = useState(false);
 
-  if (!spec || !spec.data || spec.data.length === 0) {
+  // Normalize spec payload (handles { plotly_spec: { data, layout } } or { data, layout })
+  const actualSpec = (spec as any)?.plotly_spec || spec;
+
+  if (!actualSpec || !actualSpec.data || !Array.isArray(actualSpec.data) || actualSpec.data.length === 0) {
     return (
-      <div className="w-full h-full min-h-[380px] flex items-center justify-center text-xs font-mono text-zinc-500 bg-zinc-950/60 rounded-xl border border-zinc-800">
+      <div className="w-full h-full min-h-[460px] flex items-center justify-center text-xs font-mono text-zinc-500 bg-zinc-950/60 rounded-xl border border-zinc-800">
         No chart specification available. Select variables and generate a visualization.
       </div>
     );
@@ -43,8 +46,8 @@ export function PlotlyCanvas({ spec, title }: PlotlyCanvasProps) {
 
   // 3D eligibility check: every trace must be scatter-like and have x and y data
   const isEligibleFor3D =
-    spec.data.length > 0 &&
-    spec.data.every(
+    actualSpec.data.length > 0 &&
+    actualSpec.data.every(
       (trace: any) =>
         (!trace.type || trace.type === "scatter" || trace.type === "scatter3d") &&
         Array.isArray(trace.x) &&
@@ -62,7 +65,7 @@ export function PlotlyCanvas({ spec, title }: PlotlyCanvasProps) {
   const effective3D = is3DMode && isEligibleFor3D;
 
   // Clone and transform spec for 3D WebGL mode if eligible and active
-  const transformedData = spec.data.map((trace: any) => {
+  const transformedData = actualSpec.data.map((trace: any) => {
     if (effective3D) {
       return {
         ...trace,
@@ -104,22 +107,22 @@ export function PlotlyCanvas({ spec, title }: PlotlyCanvasProps) {
       size: 11,
       color: "#A1A1AA",
     },
-    ...spec.layout,
+    ...actualSpec.layout,
     xaxis: {
       ...baseAxis,
-      ...(spec.layout?.xaxis || {}),
+      ...(actualSpec.layout?.xaxis || {}),
     },
     yaxis: {
       ...baseAxis,
-      ...(spec.layout?.yaxis || {}),
+      ...(actualSpec.layout?.yaxis || {}),
     },
     ...(effective3D
       ? {
           scene: {
-            ...(spec.layout?.scene || {}),
-            xaxis: { ...baseScene.xaxis, ...(spec.layout?.scene?.xaxis || {}) },
-            yaxis: { ...baseScene.yaxis, ...(spec.layout?.scene?.yaxis || {}) },
-            zaxis: { ...baseScene.zaxis, ...(spec.layout?.scene?.zaxis || {}) },
+            ...(actualSpec.layout?.scene || {}),
+            xaxis: { ...baseScene.xaxis, ...(actualSpec.layout?.scene?.xaxis || {}) },
+            yaxis: { ...baseScene.yaxis, ...(actualSpec.layout?.scene?.yaxis || {}) },
+            zaxis: { ...baseScene.zaxis, ...(actualSpec.layout?.scene?.zaxis || {}) },
           },
         }
       : {}),
@@ -137,11 +140,11 @@ export function PlotlyCanvas({ spec, title }: PlotlyCanvasProps) {
       width: 1000,
       scale: 2,
     },
-    ...spec.config,
+    ...actualSpec.config,
   } as any;
 
   return (
-    <div className="w-full flex flex-col rounded-xl border border-zinc-800 bg-zinc-950/70 p-4 relative overflow-hidden">
+    <div className="w-full min-h-[520px] flex flex-col rounded-xl border border-zinc-800 bg-zinc-950/70 p-4 relative overflow-hidden">
       {/* Top Header with 3D Toggle */}
       <div className="flex items-center justify-between pb-3 mb-2 border-b border-zinc-800/80">
         <span className="text-xs font-mono font-medium text-zinc-300 truncate">
@@ -172,13 +175,16 @@ export function PlotlyCanvas({ spec, title }: PlotlyCanvasProps) {
         </button>
       </div>
 
-      {/* Plot Canvas */}
-      <div className="w-full h-[400px]">
+      {/* Plot Canvas with explicit height and resize handler */}
+      <div className="w-full min-h-[460px] h-[460px] relative">
         <Plot
           data={transformedData}
-          layout={mergedLayout}
+          layout={{
+            ...mergedLayout,
+            autosize: true,
+          }}
           config={config}
-          style={{ width: "100%", height: "100%" }}
+          style={{ width: "100%", height: "460px" }}
           useResizeHandler={true}
         />
       </div>

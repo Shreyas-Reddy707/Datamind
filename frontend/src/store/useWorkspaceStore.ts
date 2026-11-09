@@ -18,6 +18,7 @@ export interface WorkspaceState {
   streamBuffer: string;
   currentAgentStep: string | null;
   activeTier: number | null;
+  isChatOpen: boolean;
 
   // Actions
   setUser: (user: User | null) => void;
@@ -26,6 +27,8 @@ export interface WorkspaceState {
   toggleJoinFileId: (fileId: string) => void;
   clearJoinFileIds: () => void;
   setActiveLabTab: (tab: LabTab) => void;
+  setIsChatOpen: (isOpen: boolean) => void;
+  toggleChat: () => void;
   injectArtifact: (artifact: {
     type: "chart" | "forensic" | "diagnostic" | "prediction";
     data: unknown;
@@ -53,6 +56,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   streamBuffer: "",
   currentAgentStep: null,
   activeTier: null,
+  isChatOpen: false,
 
   setUser: (user) => set({ user }),
   setActiveFileId: (activeFileId) => set({ activeFileId }),
@@ -65,9 +69,12 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
     })),
   clearJoinFileIds: () => set({ selectedJoinFileIds: [] }),
   setActiveLabTab: (activeLabTab) => set({ activeLabTab }),
+  setIsChatOpen: (isChatOpen) => set({ isChatOpen }),
+  toggleChat: () => set((state) => ({ isChatOpen: !state.isChatOpen })),
   injectArtifact: (injectedArtifact) =>
     set({
       injectedArtifact,
+      isChatOpen: false,
       activeLabTab:
         injectedArtifact.type === "chart"
           ? "viz"

@@ -1,14 +1,28 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import React, { Suspense, useEffect, useState } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { api, ApiError } from "@/lib/api";
 import { LabOverviewResponse } from "@/lib/types";
-import { useWorkspaceStore } from "@/store/useWorkspaceStore";
+import { LabTab, useWorkspaceStore } from "@/store/useWorkspaceStore";
 import { LeftPanel } from "@/components/workspace/LeftPanel";
 import { CenterLab } from "@/components/workspace/CenterLab";
 import { RightChat } from "@/components/workspace/RightChat";
-import { Database, AlertCircle, RefreshCw } from "lucide-react";
+import { AlertCircle, RefreshCw } from "lucide-react";
+
+function TabQuerySync() {
+  const searchParams = useSearchParams();
+  const { setActiveLabTab } = useWorkspaceStore();
+
+  useEffect(() => {
+    const tabParam = searchParams?.get("tab") as LabTab | null;
+    if (tabParam && ["overview", "forensic", "viz", "predict", "sql"].includes(tabParam)) {
+      setActiveLabTab(tabParam);
+    }
+  }, [searchParams, setActiveLabTab]);
+
+  return null;
+}
 
 export default function WorkspaceIdePage() {
   const params = useParams();
@@ -89,15 +103,21 @@ export default function WorkspaceIdePage() {
 
   return (
     <div className="h-screen w-screen overflow-hidden flex flex-col bg-[#09090B] text-zinc-100">
-      {/* 3-Pane Spatial IDE Layout */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Left Panel: Schema & Joins (280px) */}
+      <Suspense fallback={null}>
+        <TabQuerySync />
+      </Suspense>
+
+      {/* Workspace Spatial Layout */}
+      <div className="flex-1 flex overflow-hidden relative">
+        {/* Left Panel: Schema & Joins */}
         <LeftPanel overview={overview} fileId={fileId} />
 
-        {/* Center Lab: Health, Forensics, Plotly Studio, AutoML, SQL (Flex-1) */}
-        <CenterLab overview={overview} fileId={fileId} />
+        {/* Center Lab: Health, Forensics, Plotly Studio, AutoML, SQL (Expands to 100% of remaining width) */}
+        <div className="flex-1 w-full min-w-0 h-full overflow-hidden flex flex-col">
+          <CenterLab overview={overview} fileId={fileId} />
+        </div>
 
-        {/* Right Chat: 3-Tier Multi-Agent Streaming Assistant (384px) */}
+        {/* Right Chat: Pop-Up / Slide-Over Floating Drawer */}
         <RightChat fileId={fileId} />
       </div>
     </div>
