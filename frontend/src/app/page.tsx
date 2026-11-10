@@ -11,7 +11,6 @@ import {
   ShieldCheck,
   Activity,
   Layers,
-  Sparkles,
   BarChart3,
   Bot,
 } from "lucide-react";

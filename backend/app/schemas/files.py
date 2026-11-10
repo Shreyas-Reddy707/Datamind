@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 import warnings
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -69,7 +69,16 @@ class JoinFileSpec(BaseModel):
 
 class JoinPreviewRequest(BaseModel):
     files: list[JoinFileSpec] = Field(..., min_length=2, max_length=5)
-    join_sql: str = Field(..., min_length=5, max_length=2000)
+    join_sql: str | None = Field(default=None, max_length=2000)
+    question: str | None = Field(default=None, max_length=1000)
+    left_col: str | None = Field(default=None, max_length=128)
+    right_col: str | None = Field(default=None, max_length=128)
+    join_type: Literal["inner", "left"] = "inner"
+    group_by: list[str] = Field(default_factory=list, max_length=5)
+    metrics: list[dict[str, Any]] = Field(default_factory=list, max_length=10)
+    filters: list[dict[str, Any]] = Field(default_factory=list, max_length=15)
+    sort_by: str | None = Field(default=None, max_length=128)
+    sort_dir: Literal["asc", "desc"] = "desc"
     limit: int = Field(default=50, ge=1, le=100)
 
 

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   Send,
   Bot,
-  Sparkles,
+  MessageSquare,
   Zap,
   BrainCircuit,
   ArrowUpRight,
@@ -241,8 +241,8 @@ export function RightChat({ fileId }: RightChatProps) {
         className="fixed right-6 bottom-6 z-50 flex items-center gap-2.5 px-4 py-2.5 rounded-full bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-semibold text-xs shadow-2xl shadow-emerald-500/30 border border-emerald-400/50 transition-all hover:scale-105 active:scale-95 font-mono cursor-pointer"
         title="Open AI Analyst Chat"
       >
-        <Sparkles className="w-4 h-4 fill-zinc-950" />
-        <span>💬 AI Analyst</span>
+        <MessageSquare className="w-4 h-4 text-zinc-950" />
+        <span>AI Analyst</span>
         {isStreaming && (
           <span className="flex h-2 w-2 relative">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>

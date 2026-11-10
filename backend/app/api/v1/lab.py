@@ -15,6 +15,7 @@ import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_authorized_user_file, get_current_user
 from app.db.session import get_db
@@ -271,6 +272,53 @@ async def generate_chart_spec_endpoint(
     }
 
 
+def _validate_llm_generated_sql(sql_text: str, valid_cols: list[str]) -> str | None:
+    """Validate LLM-generated DuckDB SQL strictly against read-only SELECT rules and schema."""
+    candidate = re.sub(r"^```(?:sql)?|```$", "", sql_text.strip(), flags=re.IGNORECASE).strip()
+    candidate = candidate.rstrip(";").strip()
+    if not candidate or ";" in candidate:
+        return None
+    if not re.match(r"^(SELECT|WITH)\b", candidate, re.IGNORECASE):
+        return None
+    try:
+        DuckDBManager._validate_sql_safety(candidate)
+    except ValueError:
+        return None
+
+    # Ensure every double-quoted identifier (excluding AS aliases) belongs to valid_cols or dataset
+    valid_lower = {c.lower() for c in valid_cols}
+    quoted_idents = re.findall(r'(?<!AS\s)"([^"]+)"', candidate, re.IGNORECASE)
+    for ident in quoted_idents:
+        if ident.lower() not in valid_lower and ident.lower() not in {"dataset", "joined_dataset"}:
+            return None
+    return candidate
+
+
+async def _try_llm_question_to_sql(question: str, valid_cols: list[str], num_cols: list[str]) -> str | None:
+    """Attempt quick LLM-assisted SQL synthesis when deterministic parsing lacks confidence."""
+    if llm_client.is_chat_circuit_open():
+        return None
+    status_info = await llm_client.check_ollama_status()
+    if not status_info.get("online"):
+        return None
+
+    prompt = (
+        "Generate a single read-only DuckDB SELECT query against table \"dataset\".\n"
+        f"Available columns: {valid_cols[:25]}\n"
+        f"Numeric columns: {num_cols[:12]}\n"
+        f"Question: {question}\n"
+        "Rules: Output ONLY raw SQL (no markdown fences, no explanation). Double-quote column names. LIMIT <= 100."
+    )
+    res = await llm_client.chat_completion(
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.0,
+        max_tokens=180,
+        timeout=15,
+    )
+    raw_sql = (res.get("content") or "").strip()
+    return _validate_llm_generated_sql(raw_sql, valid_cols)
+
+
 @router.post("/{file_id}/query")
 async def execute_lab_sql_query_endpoint(
     file_id: uuid.UUID,
@@ -279,19 +327,19 @@ async def execute_lab_sql_query_endpoint(
     user_file: UserFile = Depends(get_authorized_user_file),
     db: AsyncSession = Depends(get_db),
 ):
-    """Execute read-only sandboxed SQL query via DuckDB against Parquet dataset (and optional joined datasets)."""
-    sql_text = (request.sql or request.query or "").strip()
-    if not sql_text:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="SQL query text is required.",
-        )
+    """Execute Smart Query in Builder, Natural-Language, or SQL mode via DuckDB."""
+    gf = user_file.global_file
 
+    # Resolve legacy named joins (if passed)
     named_joins: list[tuple[str, str]] = []
     if request.join_file_ids:
-        join_stmt = select(UserFile).where(
-            UserFile.id.in_(request.join_file_ids),
-            UserFile.user_id == current_user.id,
+        join_stmt = (
+            select(UserFile)
+            .options(selectinload(UserFile.global_file))
+            .where(
+                UserFile.id.in_(request.join_file_ids),
+                UserFile.user_id == current_user.id,
+            )
         )
         join_files = (await db.scalars(join_stmt)).all()
         for jf in join_files:
@@ -299,23 +347,153 @@ async def execute_lab_sql_query_endpoint(
                 alias = re.sub(r"\.[^.]+$", "", jf.display_name)
                 named_joins.append((alias, jf.global_file.parquet_path))
 
-    gf = user_file.global_file
-    try:
-        result = await asyncio.to_thread(
-            DuckDBManager.execute_sql_tabular,
-            gf.parquet_path,
-            sql_text,
-            named_joins or None,
-            100,
+    # Determine effective mode seamlessly
+    question_text = (request.question or request.natural_language or "").strip()
+    raw_sql_or_query = (request.sql or request.query or "").strip()
+    is_explicit_sql = (
+        request.mode == "sql"
+        or (request.mode == "auto" and bool(request.sql))
+        or (
+            request.mode == "auto"
+            and bool(raw_sql_or_query)
+            and bool(re.match(r"^(SELECT|WITH)\b", raw_sql_or_query, re.IGNORECASE))
         )
-        return result
+    )
+    if not question_text and raw_sql_or_query and not is_explicit_sql:
+        question_text = raw_sql_or_query
+
+    # Mode 3: Explicit Read-Only SQL Execution (backward-compatible power mode)
+    if is_explicit_sql:
+        if not raw_sql_or_query:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="SQL query text is required.",
+            )
+        try:
+            return await asyncio.to_thread(
+                DuckDBManager.execute_sql_tabular,
+                gf.parquet_path,
+                raw_sql_or_query,
+                named_joins or None,
+                request.limit,
+            )
+        except ValueError as ve:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(ve)) from ve
+        except Exception as exc:
+            logger.warning("DuckDB SQL query failed for file %s: %s", file_id, exc)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"SQL execution error: {exc}",
+            ) from exc
+
+    # Inspect schema for Builder / Natural-Language modes
+    try:
+        all_cols, num_cols, cat_cols = await asyncio.to_thread(
+            DuckDBManager.inspect_parquet_columns, gf.parquet_path
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unable to inspect dataset schema: {exc}",
+        ) from exc
+
+    # Optional authorized visual join file
+    join_info: dict | None = None
+    right_parquet_path: str | None = None
+    if request.join_config:
+        right_stmt = (
+            select(UserFile)
+            .options(selectinload(UserFile.global_file))
+            .where(
+                UserFile.id == request.join_config.right_file_id,
+                UserFile.user_id == current_user.id,
+            )
+        )
+        right_uf = (await db.execute(right_stmt)).scalar_one_or_none()
+        if not right_uf or not right_uf.global_file:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Joined dataset not found or unauthorized.",
+            )
+        right_parquet_path = right_uf.global_file.parquet_path
+        right_cols, _, _ = await asyncio.to_thread(
+            DuckDBManager.inspect_parquet_columns, right_parquet_path
+        )
+        join_info = {
+            "right_cols": right_cols,
+            "left_col": request.join_config.left_col,
+            "right_col": request.join_config.right_col,
+            "join_type": request.join_config.join_type,
+            "right_alias": right_uf.display_name,
+        }
+
+    # Mode 2: Natural-Language Question Mode
+    if question_text and (
+        request.mode in ("question", "natural_language")
+        or (not request.group_by and not request.metrics and not request.filters)
+    ):
+        parsed = DuckDBManager.parse_natural_language_query(
+            question_text, all_cols, num_cols, cat_cols
+        )
+        # If deterministic parser had low confidence and Ollama is online, try schema-firewalled LLM SQL
+        if not parsed["confident"]:
+            llm_sql = await _try_llm_question_to_sql(question_text, all_cols, num_cols)
+            if llm_sql:
+                try:
+                    llm_result = await asyncio.to_thread(
+                        DuckDBManager.execute_sql_tabular,
+                        gf.parquet_path,
+                        llm_sql,
+                        named_joins or None,
+                        request.limit,
+                    )
+                    llm_result["explanation"] = f'Answered "{question_text}" using schema-verified DuckDB analytics.'
+                    return llm_result
+                except Exception as exc:
+                    logger.debug("LLM-generated SQL fallback triggered: %s", exc)
+
+        group_by = parsed["group_by"]
+        metrics = parsed["metrics"]
+        filters = parsed["filters"]
+        sort_by = parsed["sort_by"]
+        sort_dir = parsed["sort_dir"]
+        limit = parsed["limit"]
+    else:
+        # Mode 1: Visual Builder AST Mode
+        group_by = request.group_by
+        metrics = [m.model_dump() for m in request.metrics]
+        filters = [f.model_dump() for f in request.filters]
+        sort_by = request.sort_by
+        sort_dir = request.sort_dir
+        limit = request.limit
+
+    try:
+        exec_sql, params, display_sql, explanation = DuckDBManager.compile_builder_sql(
+            valid_cols=all_cols,
+            group_by=group_by,
+            metrics=metrics,
+            filters=filters,
+            sort_by=sort_by,
+            sort_dir=sort_dir,
+            limit=limit,
+            join_info=join_info,
+        )
+        return await asyncio.to_thread(
+            DuckDBManager.execute_compiled_query,
+            gf.parquet_path,
+            exec_sql,
+            params,
+            display_sql,
+            explanation,
+            right_parquet_path,
+        )
     except ValueError as ve:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(ve)) from ve
     except Exception as exc:
-        logger.warning("DuckDB SQL query failed for file %s: %s", file_id, exc)
+        logger.warning("Smart DuckDB query failed for file %s: %s", file_id, exc)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"SQL execution error: {exc}",
+            detail=f"Query execution error: {exc}",
         ) from exc
 
 

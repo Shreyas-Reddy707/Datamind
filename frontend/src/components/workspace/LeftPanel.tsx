@@ -10,7 +10,6 @@ import {
   Type,
   Calendar,
   Layers,
-  Sparkles,
   Link2,
   Trash2,
   ChevronDown,

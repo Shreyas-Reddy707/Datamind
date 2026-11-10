@@ -4,6 +4,8 @@ import {
   FileSheetsResponse,
   LabChartType,
   LabOverviewResponse,
+  LabQueryPayload,
+  LabQueryResponse,
   PredictionHistory,
   PredictDiagnoseRequest,
   PredictDiagnoseResponse,
@@ -313,16 +315,17 @@ export const api = {
     },
     async query(
       fileId: string,
-      sql: string,
+      payloadOrSql: string | LabQueryPayload,
       joinFileIds: string[] = []
-    ): Promise<{ columns: string[]; rows: unknown[][]; row_count: number }> {
-      return apiFetch<{ columns: string[]; rows: unknown[][]; row_count: number }>(
-        `/api/v1/lab/${fileId}/query`,
-        {
-          method: "POST",
-          body: JSON.stringify({ sql, join_file_ids: joinFileIds }),
-        }
-      );
+    ): Promise<LabQueryResponse> {
+      const bodyPayload: LabQueryPayload =
+        typeof payloadOrSql === "string"
+          ? { sql: payloadOrSql, join_file_ids: joinFileIds }
+          : payloadOrSql;
+      return apiFetch<LabQueryResponse>(`/api/v1/lab/${fileId}/query`, {
+        method: "POST",
+        body: JSON.stringify(bodyPayload),
+      });
     },
     async visualize(
       fileId: string,

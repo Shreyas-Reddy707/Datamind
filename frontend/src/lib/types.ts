@@ -161,6 +161,10 @@ export interface GlobalFile {
   col_count: number;
   detected_domain: string;
   ref_count: number;
+  schema_json?: {
+    columns?: Record<string, { type?: string; dtype?: string; nullable?: boolean }>;
+    [key: string]: unknown;
+  };
   created_at: string;
 }
 
@@ -271,5 +275,59 @@ export interface LabOverviewResponse {
   };
   profile: DataProfile;
   ref_count: number;
+}
+
+export type BuilderAggType = "avg" | "sum" | "count" | "min" | "max" | "median";
+
+export type BuilderFilterOp =
+  | "eq"
+  | "neq"
+  | "gt"
+  | "gte"
+  | "lt"
+  | "lte"
+  | "contains"
+  | "not_null"
+  | "is_null";
+
+export interface BuilderMetricSpec {
+  col: string;
+  agg: BuilderAggType;
+}
+
+export interface BuilderFilterSpec {
+  col: string;
+  op: BuilderFilterOp;
+  val?: string | number | null;
+}
+
+export interface BuilderJoinSpec {
+  right_file_id: string;
+  left_col: string;
+  right_col: string;
+  join_type?: "inner" | "left";
+}
+
+export interface LabQueryPayload {
+  mode?: "auto" | "builder" | "question" | "natural_language" | "sql";
+  sql?: string;
+  question?: string;
+  group_by?: string[];
+  metrics?: BuilderMetricSpec[];
+  filters?: BuilderFilterSpec[];
+  sort_by?: string | null;
+  sort_dir?: "asc" | "desc";
+  limit?: number;
+  join_config?: BuilderJoinSpec | null;
+  join_file_ids?: string[];
+}
+
+export interface LabQueryResponse {
+  columns: string[];
+  rows: unknown[][];
+  row_count: number;
+  execution_time_ms?: number;
+  generated_sql?: string;
+  explanation?: string;
 }
 

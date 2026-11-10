@@ -276,6 +276,7 @@ async def join_preview(
     """
     named_paths: list[tuple[str, str]] = []
 
+    authorized_files: list[UserFile] = []
     for spec in req.files:
         stmt = (
             select(UserFile)
@@ -290,14 +291,94 @@ async def join_preview(
                 status_code=status.HTTP_404_NOT_FOUND,
             )
         named_paths.append((spec.alias, uf.global_file.parquet_path))
+        authorized_files.append(uf)
 
     try:
-        records = DuckDBManager.execute_multi_file_join(
-            named_parquet_files=named_paths,
-            join_sql=req.join_sql,
-            limit=req.limit,
+        # Power SQL fallback mode (backward compatibility)
+        if req.join_sql and req.join_sql.strip():
+            records = await asyncio.to_thread(
+                DuckDBManager.execute_multi_file_join,
+                named_parquet_files=named_paths,
+                join_sql=req.join_sql,
+                limit=req.limit,
+            )
+            cols = list(records[0].keys()) if records else []
+            return {
+                "rows": records,
+                "count": len(records),
+                "columns": cols,
+                "generated_sql": req.join_sql.strip(),
+                "explanation": f"Combined {len(authorized_files)} dataset(s) returning {len(records)} joined row(s).",
+            }
+
+        # No-Code Visual Join Builder / Question Mode across first two files
+        left_uf, right_uf = authorized_files[0], authorized_files[1]
+        left_cols, left_num, left_cat = await asyncio.to_thread(
+            DuckDBManager.inspect_parquet_columns, left_uf.global_file.parquet_path
         )
-        return {"rows": records, "count": len(records)}
+        right_cols, _, _ = await asyncio.to_thread(
+            DuckDBManager.inspect_parquet_columns, right_uf.global_file.parquet_path
+        )
+
+        # Auto-detect matching shared column if left_col / right_col omitted
+        shared_cols = [c for c in left_cols if c in set(right_cols)]
+        left_col = req.left_col or (shared_cols[0] if shared_cols else left_cols[0])
+        right_col = req.right_col or (shared_cols[0] if shared_cols else right_cols[0])
+
+        group_by = req.group_by
+        metrics = req.metrics
+        filters = req.filters
+        sort_by = req.sort_by
+        sort_dir = req.sort_dir
+        limit = req.limit
+
+        if req.question and req.question.strip() and not group_by and not metrics:
+            combined_cols = left_cols + [c for c in right_cols if c not in set(left_cols)]
+            parsed = DuckDBManager.parse_natural_language_query(
+                req.question, combined_cols, left_num, left_cat
+            )
+            group_by = parsed["group_by"]
+            metrics = parsed["metrics"]
+            filters = parsed["filters"]
+            sort_by = parsed["sort_by"]
+            sort_dir = parsed["sort_dir"]
+            limit = parsed["limit"]
+
+        exec_sql, params, display_sql, explanation = DuckDBManager.compile_builder_sql(
+            valid_cols=left_cols,
+            group_by=group_by,
+            metrics=metrics,
+            filters=filters,
+            sort_by=sort_by,
+            sort_dir=sort_dir,
+            limit=limit,
+            join_info={
+                "right_cols": right_cols,
+                "left_col": left_col,
+                "right_col": right_col,
+                "join_type": req.join_type,
+                "right_alias": right_uf.display_name,
+            },
+        )
+        res = await asyncio.to_thread(
+            DuckDBManager.execute_compiled_query,
+            left_uf.global_file.parquet_path,
+            exec_sql,
+            params,
+            display_sql,
+            explanation,
+            right_uf.global_file.parquet_path,
+        )
+        dict_rows = [dict(zip(res["columns"], r, strict=False)) for r in res["rows"]]
+        return {
+            "rows": dict_rows,
+            "count": res["row_count"],
+            "columns": res["columns"],
+            "table_rows": res["rows"],
+            "execution_time_ms": res["execution_time_ms"],
+            "generated_sql": res["generated_sql"],
+            "explanation": res["explanation"],
+        }
     except ValueError as ve:
         raise AppError(
             message=str(ve),

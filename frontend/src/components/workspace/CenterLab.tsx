@@ -3,16 +3,12 @@
 import React, { useEffect, useState } from "react";
 import {
   Activity,
-  BarChart3,
-  CheckCircle2,
   Download,
-  FileCode,
   FileText,
-  Play,
   RefreshCw,
   Search,
   ShieldAlert,
-  Sparkles,
+  SlidersHorizontal,
   Table as TableIcon,
 } from "lucide-react";
 import { api } from "@/lib/api";
@@ -24,6 +20,7 @@ import {
 import { QualityGauge3D } from "@/components/spatial/QualityGauge3D";
 import { EmbeddedPlotlyStudio } from "./EmbeddedPlotlyStudio";
 import { PredictionLab } from "./PredictionLab";
+import { SmartPivotStudio } from "./SmartPivotStudio";
 import { useWorkspaceStore, LabTab } from "@/store/useWorkspaceStore";
 
 interface CenterLabProps {
@@ -36,7 +33,6 @@ export function CenterLab({ overview, fileId }: CenterLabProps) {
     activeLabTab,
     setActiveLabTab,
     injectedArtifact,
-    selectedJoinFileIds,
     requestedChartOverride,
     setRequestedChartOverride,
   } = useWorkspaceStore();
@@ -49,17 +45,6 @@ export function CenterLab({ overview, fileId }: CenterLabProps) {
   const [chartSpec, setChartSpec] = useState<Record<string, unknown> | null>(null);
   const [isChartLoading, setIsChartLoading] = useState(false);
   const [chartError, setChartError] = useState<string | null>(null);
-
-  // SQL State
-  const [sqlQuery, setSqlQuery] = useState<string>("SELECT * FROM dataset LIMIT 20;");
-  const [sqlResults, setSqlResults] = useState<{
-    columns: string[];
-    rows: unknown[][];
-    row_count: number;
-  } | null>(null);
-  const [sqlLatencyMs, setSqlLatencyMs] = useState<number | null>(null);
-  const [isSqlExecuting, setIsSqlExecuting] = useState(false);
-  const [sqlError, setSqlError] = useState<string | null>(null);
 
   // Forensic State
   const [forensicReport, setForensicReport] = useState<{
@@ -306,20 +291,17 @@ export function CenterLab({ overview, fileId }: CenterLabProps) {
     handleGenerateChart(nextType, nextX, nextY, "");
   };
 
-  const handleExecuteSql = async () => {
-    try {
-      setIsSqlExecuting(true);
-      setSqlError(null);
-      const startTime = performance.now();
-      const res = await api.lab.query(fileId, sqlQuery, selectedJoinFileIds);
-      const endTime = performance.now();
-      setSqlLatencyMs(Math.round(endTime - startTime));
-      setSqlResults(res);
-    } catch (err: any) {
-      setSqlError(err.message || "SQL execution failed.");
-    } finally {
-      setIsSqlExecuting(false);
-    }
+  const handleTurnPivotIntoChart = (
+    chartType: LabChartType,
+    nextX: string,
+    nextY?: string
+  ) => {
+    setSelectedChartType(chartType);
+    setXCol(nextX);
+    setYCol(nextY || "");
+    setColorCol("");
+    setActiveLabTab("forensic");
+    handleGenerateChart(chartType, nextX, nextY || "", "");
   };
 
   const handlePrintExport = () => {
@@ -330,7 +312,7 @@ export function CenterLab({ overview, fileId }: CenterLabProps) {
     { id: "overview", label: "Overview & Data Explorer", icon: TableIcon },
     { id: "forensic", label: "Forensic Analytics Lab", icon: ShieldAlert },
     { id: "predict", label: "Predictive AutoML Lab", icon: Activity },
-    { id: "sql", label: "DuckDB SQL Sandbox", icon: FileCode },
+    { id: "sql", label: "Smart Query & Pivot", icon: SlidersHorizontal },
   ];
 
   return (
@@ -697,97 +679,13 @@ export function CenterLab({ overview, fileId }: CenterLabProps) {
           <PredictionLab fileId={fileId} columns={columns} />
         )}
 
-        {/* TAB 4: DUCKDB SQL SANDBOX */}
+        {/* TAB 4: SMART QUERY & PIVOT STUDIO */}
         {activeLabTab === "sql" && (
-          <div className="space-y-4">
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-mono font-semibold text-zinc-200 flex items-center gap-2">
-                  <FileCode className="w-4 h-4 text-cyan-400" />
-                  DuckDB In-Memory Analytical SQL Sandbox
-                </span>
-
-                <div className="flex items-center gap-3">
-                  {sqlLatencyMs !== null && (
-                    <span className="text-[11px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                      ⚡ {sqlLatencyMs}ms
-                    </span>
-                  )}
-
-                  <button
-                    onClick={handleExecuteSql}
-                    disabled={isSqlExecuting}
-                    className="px-3.5 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-600 disabled:opacity-50 text-black font-semibold text-xs font-mono transition-colors flex items-center gap-1.5 shadow-sm"
-                  >
-                    {isSqlExecuting ? (
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      <Play className="w-3.5 h-3.5 fill-black" />
-                    )}
-                    <span>Run Query (Ctrl+Enter)</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* SQL Textarea */}
-              <textarea
-                value={sqlQuery}
-                onChange={(e) => setSqlQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-                    e.preventDefault();
-                    if (!isSqlExecuting) {
-                      handleExecuteSql();
-                    }
-                  }
-                }}
-                rows={5}
-                className="w-full p-3 bg-zinc-900 border border-zinc-800 rounded-lg text-xs text-zinc-100 font-mono focus:outline-none focus:border-cyan-500 leading-relaxed selection:bg-cyan-500/20"
-                placeholder="SELECT column_a, COUNT(*) FROM dataset GROUP BY column_a;"
-              />
-
-              {sqlError && (
-                <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-xs font-mono text-rose-300">
-                  {sqlError}
-                </div>
-              )}
-            </div>
-
-            {/* SQL Results Grid */}
-            {sqlResults && (
-              <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-4 space-y-3">
-                <div className="flex items-center justify-between text-xs font-mono text-zinc-400">
-                  <span>Returned {sqlResults.row_count} rows</span>
-                  <span>DuckDB Vectorized Pipeline</span>
-                </div>
-
-                <div className="overflow-x-auto border border-zinc-800 rounded-lg max-h-80">
-                  <table className="w-full text-left text-xs font-mono">
-                    <thead className="bg-zinc-900 sticky top-0 border-b border-zinc-800">
-                      <tr>
-                        {sqlResults.columns.map((c) => (
-                          <th key={c} className="py-2.5 px-3 font-semibold text-zinc-300">
-                            {c}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-zinc-800/60">
-                      {sqlResults.rows.map((row, i) => (
-                        <tr key={i} className="hover:bg-zinc-900/40">
-                          {row.map((val, cellIdx) => (
-                            <td key={cellIdx} className="py-2 px-3 text-zinc-400 truncate max-w-[200px]">
-                              {String(val ?? "NULL")}
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-          </div>
+          <SmartPivotStudio
+            fileId={fileId}
+            overview={overview}
+            onTurnIntoChart={handleTurnPivotIntoChart}
+          />
         )}
       </div>
     </div>

@@ -452,3 +452,82 @@ async def test_lab_and_predict_endpoints(test_user_and_file):
         )
         assert job_res.status_code == 200
         assert job_res.json()["id"] == job_id
+
+
+@pytest.mark.asyncio
+async def test_smart_query_three_modes_and_visual_join(test_user_and_file):
+    user, uf, gf = test_user_and_file
+    token = create_access_token({"sub": str(user.id), "org_id": str(user.org_id), "role": user.role})
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # 1. Visual Builder Mode
+        builder_res = await client.post(
+            f"/api/v1/lab/{uf.id}/query",
+            json={
+                "mode": "builder",
+                "group_by": ["department"],
+                "metrics": [{"col": "salary", "agg": "avg"}, {"col": "*", "agg": "count"}],
+                "filters": [{"col": "department", "op": "not_null"}],
+                "sort_dir": "desc",
+                "limit": 10,
+            },
+            headers=headers,
+        )
+        assert builder_res.status_code == 200
+        b_data = builder_res.json()
+        assert b_data["row_count"] == 3
+        assert "department" in b_data["columns"]
+        assert "avg_salary" in b_data["columns"]
+        assert "generated_sql" in b_data
+        assert "explanation" in b_data
+
+        # 2. Natural-Language Question Mode
+        nl_res = await client.post(
+            f"/api/v1/lab/{uf.id}/query",
+            json={
+                "mode": "question",
+                "question": "top 2 departments by average salary",
+            },
+            headers=headers,
+        )
+        assert nl_res.status_code == 200
+        nl_data = nl_res.json()
+        assert nl_data["row_count"] == 2
+        assert "department" in nl_data["columns"]
+        assert "avg_salary" in nl_data["columns"]
+
+        # 3. Advanced Raw SQL Fallback Mode
+        sql_res = await client.post(
+            f"/api/v1/lab/{uf.id}/query",
+            json={
+                "mode": "sql",
+                "sql": "SELECT department, COUNT(*) AS cnt FROM dataset GROUP BY department",
+            },
+            headers=headers,
+        )
+        assert sql_res.status_code == 200
+        assert sql_res.json()["row_count"] == 3
+
+        # 4. No-Code Visual Join Preview (two file entries)
+        join_res = await client.post(
+            "/api/v1/files/join-preview",
+            json={
+                "files": [
+                    {"file_id": str(uf.id), "alias": "left_ds"},
+                    {"file_id": str(uf.id), "alias": "right_ds"},
+                ],
+                "left_col": "id",
+                "right_col": "id",
+                "join_type": "inner",
+                "group_by": ["department"],
+                "metrics": [{"col": "*", "agg": "count"}],
+                "limit": 5,
+            },
+            headers=headers,
+        )
+        assert join_res.status_code == 200
+        assert join_res.json()["count"] == 3
+
