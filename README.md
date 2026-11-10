@@ -1,23 +1,58 @@
 # DataMind v2
 
-**No-Code Spreadsheet Insights, Interactive 2D/3D Charts, Smart Pivot Tables & What-If Predictions**
+**No-Code Spreadsheet Insights, Interactive 3D Charts, Smart Pivot Tables & What-If Predictions**
 
-*Upload CSV, Excel (`.xlsx`/`.xls`), JSON, or Parquet files and get plain-English insights, custom summary tables, interactive charts, and predictive simulations — without writing a single line of code.*
+*Upload CSV, Excel (`.xlsx`/`.xls`), JSON, or Parquet files and get plain-English insights, custom summary tables, interactive 2D/3D charts, and predictive simulations — without writing a single line of code.*
+
+Built by **Shreyas Reddy**.
 
 ---
 
-## Key Capabilities
+## What is DataMind v2?
 
-### 4-Tab Interactive Workspace (`/workspace/[fileId]`)
-1. **Overview & Data**: Automatic **Data Quality Score** (completeness, missing cells, duplicate checks), suggested cleanup actions, multi-sheet Excel switcher, and instant row search & browsing.
-2. **Insights & Charts**: Automated anomaly and correlation discoveries structured cleanly (*Background -> What We Found -> Data Proof -> What It Means / Next Step*), paired with an embedded **Interactive Chart Studio** supporting 2D & 3D Plotly charts.
-3. **Predict & Simulate**: Pick any target column to predict. Automatically excludes post-outcome leakage columns, benchmarks multiple Scikit-Learn models (`classification`, `regression`, `clustering`, `timeseries`), ranks top driving factors, and lets you adjust real-time sliders in the **What-If Outcome Simulator**.
-4. **Smart Tables & Pivot**: Ask for summary tables in plain English, build custom groupings/calculations/filters visually, combine multiple files via Visual Join, download CSVs, or convert any table directly into a chart (with an optional collapsed SQL view for power users).
+DataMind v2 is a private, local-first analytical workspace designed for non-technical operators and data teams alike. Instead of juggling spreadsheets, BI tools, and SQL consoles, every uploaded dataset opens into a unified **4-Tab No-Code Workspace** paired with an **AI Assistant Drawer**:
 
-### Ask DataMind AI Assistant
-- **Dual-Engine Transparency**: Automatically streams generative answers via local **Ollama (`qwen2.5-coder:7b`)** when running, and falls back in milliseconds to the built-in **Minimal Mode (DuckDB)** deterministic engine when offline.
-- **Agentic Workspace Control**: Understands navigation and action commands directly from chat (`switch_tab`, `switch_file`, `switch_sheet`, `update_chart`, `run_automl`).
-- **Schema Verification & Persistent Memory**: Grounded strictly against verified dataset columns with `pgvector` pattern recall and per-user/per-file chat history.
+1. **Overview & Data**: Instant **Data Quality Score** (completeness, empty cells, duplicate detection), suggested cleanup actions, multi-sheet Excel switching, and fast row search & browsing.
+2. **Insights & Charts**: Automatically discovers key patterns, outliers, and relationships explained clearly (*Background → What We Found → Data Proof → What It Means / Next Step*), linked directly to an interactive 2D & 3D Plotly chart studio.
+3. **Predict & "What-If" Simulator**: Pick any column to predict (such as cancellations, price, or sales). DataMind automatically blocks post-outcome data leakage, compares multiple Scikit-Learn models, explains top driving factors, and lets you adjust real-time sliders to simulate future outcomes.
+4. **Smart Tables & Pivot**: Ask for summary tables in plain English, pick visual groupings, metrics, and filters, combine multiple uploaded files visually, download CSVs, or convert any table directly into a chart with one click.
+5. **Ask DataMind AI Assistant**: Chat naturally about your file—answers come with verified numbers even offline (**Minimal Mode via DuckDB**), or stream generative explanations when local **Ollama (`qwen2.5-coder:7b`)** is running—plus executes workspace commands (`switch tabs`, `plot charts`, `run predictions`).
+
+---
+
+## 2-Minute Quickstart (One Command)
+
+### Prerequisites
+- **Docker Desktop** (for PostgreSQL 16 `pgvector` and Redis 7)
+- **Python 3.11+**
+- **Node.js 20+**
+- **Ollama** *(optional for generative chat explanations; DataMind's DuckDB engine works fully offline)*:
+  ```powershell
+  ollama pull qwen2.5-coder:7b
+  ollama serve
+  ```
+
+### Windows (PowerShell)
+```powershell
+git clone https://github.com/Shreyas-Reddy707/Datamind.git
+cd Datamind
+.\scripts\setup.ps1
+.\scripts\dev.ps1     # Opens http://localhost:3000
+```
+
+### macOS / Linux
+```bash
+git clone https://github.com/Shreyas-Reddy707/Datamind.git
+cd Datamind
+bash scripts/setup.sh
+```
+Then start the backend and frontend in separate terminals:
+```bash
+cd backend && ./.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+cd frontend && npm run dev -- -p 3000
+```
+
+Visit **[http://localhost:3000](http://localhost:3000)** (API docs at `http://127.0.0.1:8000/docs`).
 
 ---
 
@@ -27,101 +62,47 @@
 | --- | --- |
 | **Frontend** | Next.js 15 (App Router, TypeScript), React 19, Tailwind CSS, Zustand, Plotly.js, Three.js / R3F |
 | **Backend API** | Python 3.11+, FastAPI (Async), SQLAlchemy 2.0 (Async), Alembic, Pydantic Settings |
-| **Analytics & ML** | DuckDB (in-process read-only Parquet OLAP), Pandas, NumPy, Scikit-Learn, Taskiq |
+| **OLAP & AutoML** | DuckDB (read-only Parquet engine), Pandas, NumPy, Scikit-Learn, Taskiq |
 | **Database & Cache** | PostgreSQL 16 (`pgvector` 768-D embeddings), Redis 7 |
 | **AI Engine** | Direct `httpx` local Ollama (`/api/chat`, `/api/embeddings`, `/api/tags`) + deterministic DuckDB fallback |
 | **Security** | Argon2id password hashing, 5-attempt lockout, 15-min JWT + rotating `HttpOnly` refresh cookies, BOLA ownership checks, magic-byte `UploadGuard`, `PromptGuard` |
 
 ---
 
-## Project Structure
+## Repository Structure
 
 ```text
 Datamind/
-├── backend/
-│   ├── alembic/                  # PostgreSQL schema migrations
-│   ├── app/
-│   │   ├── agents/               # 3-Tier Classifier & bounded LangGraph reasoning graph
-│   │   ├── api/v1/               # FastAPI routers (auth, files, lab, predict, chat, memory)
-│   │   ├── db/                   # Async SQLAlchemy engine & session management
-│   │   ├── engine/               # DuckDBManager, InstantResponder, ParquetIngestor, ChartBuilder, MLRunner
-│   │   ├── llm/                  # Direct Ollama HTTP client + offline circuit breaker
-│   │   ├── memory/               # pgvector semantic pattern learner, context builder, Redis query cache
-│   │   ├── models/               # SQLAlchemy ORM models
-│   │   ├── schemas/              # Pydantic Create/Update/Response schemas
-│   │   ├── security/             # Argon2id auth, rate limiter, upload guard, prompt guard
-│   │   └── workers/              # Taskiq background workers
-│   ├── tests/                    # Backend pytest integration & security suite
-│   └── pyproject.toml
-├── frontend/
-│   ├── public/                   # llms.txt & static assets
-│   └── src/
-│       ├── app/                  # Next.js App Router pages (/, /login, /register, /dashboard, /workspace/[fileId], /settings, /account, /terms, /privacy)
-│       ├── components/           # Workspace tabs (CenterLab, SmartPivotStudio, PredictionLab, LeftPanel, RightChat, EmbeddedPlotlyStudio, PlotlyCanvas) & 3D visuals
-│       ├── lib/                  # Typed API client with JWT auto-refresh & types
-│       └── store/                # Zustand workspace store
-├── bruno/                        # API test collection
-├── docs/                         # Architecture, Schema, Security, and Task specifications
-├── docker-compose.yml            # PostgreSQL 16 (pgvector) + Redis 7
-└── .env.example                  # Environment variable template
+├── backend/                # FastAPI + LangGraph + DuckDB + Taskiq
+│   ├── alembic/            # PostgreSQL schema migrations
+│   ├── app/                # Routers, security core, DuckDB/ML engines, LLM client
+│   └── tests/              # Pytest unit, security & API integration suite
+├── frontend/               # Next.js 15 Spatial 3D Workspace UI
+│   ├── public/             # llms.txt & static metadata
+│   └── src/                # App Router pages, Workspace tabs & Zustand store
+├── bruno/                  # API & OWASP security test collection
+├── docs/                   # Architecture, Schema, Security & Roadmap specs
+├── assets/                 # Branding assets
+├── scripts/                # setup.ps1, setup.sh, dev.ps1 quickstart launchers
+├── .env.example            # Safe configuration template (no real secrets)
+├── .gitignore              # Excludes .env, uploads/, *.parquet, caches & logs
+├── .pre-commit-config.yaml # Ruff, Pyright, Gitleaks, Bandit hooks
+├── AGENTS.md               # Engineering & security invariants
+├── docker-compose.yml      # Zero-config PostgreSQL 16 (pgvector) + Redis 7
+├── LICENSE                 # MIT License
+└── README.md
 ```
-
----
-
-## Quickstart (Windows + Docker)
-
-### 1. Prerequisites
-- **Docker Desktop** (for PostgreSQL 16 `pgvector` on `5432` and Redis 7 on `6379`)
-- **Python 3.11+**
-- **Node.js 20+**
-- **Ollama** *(optional for generative AI responses; built-in DuckDB engine works even when offline)*:
-  ```powershell
-  ollama pull qwen2.5-coder:7b
-  ollama serve
-  ```
-
-### 2. Start Infrastructure & Configure Environment
-```powershell
-copy .env.example .env
-docker compose up -d
-```
-
-### 3. Backend Setup & Migrations
-```powershell
-cd backend
-python -m venv .venv
-.venv\Scripts\python.exe -m pip install -e ".[dev]"
-.venv\Scripts\alembic.exe upgrade head
-.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
-```
-
-*(Optional background worker for async jobs)*:
-```powershell
-cd backend
-.venv\Scripts\taskiq.exe worker app.workers.broker:broker
-```
-
-### 4. Frontend Setup
-```powershell
-cd frontend
-npm install
-npm run dev -- -p 3000
-```
-
-Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ---
 
 ## Verification & Testing
 
-### Backend Lint & Pytest
 ```powershell
+# Backend lint & test suite
 backend\.venv\Scripts\ruff check backend/app backend/tests
 backend\.venv\Scripts\pytest.exe backend/tests/ -v
-```
 
-### Frontend Typecheck & Production Build
-```powershell
+# Frontend typecheck & production build
 cd frontend
 npm run typecheck
 npm run build
@@ -129,6 +110,11 @@ npm run build
 
 ---
 
-## Supported File Limits
+## Supported File Formats & Safety Limits
 - **Formats**: `.csv`, `.xlsx`, `.xls`, `.json`, `.parquet` (multi-sheet Excel workbooks supported with live sheet switching)
 - **Limits**: 50 MB max upload size · 500,000 rows (`100,000` rows/sheet for Excel) · 500 columns · 512 MB DuckDB memory limit with `enable_external_access = false`
+
+---
+
+## License
+Released under the [MIT License](LICENSE). Built by **Shreyas Reddy**.

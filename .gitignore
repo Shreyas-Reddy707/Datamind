@@ -1,88 +1,72 @@
-# Ignore environment files
+# ── Environment & Secrets ──
 .env
 .env.*
-
-# Ignore dependencies
-node_modules/
-venv/
-.venv/
-__pycache__/
-*.py[cod]
-
-# Ignore system files
-.DS_Store
-Thumbs.db
-
-# Ignore IDE/editor files
-.vscode/
-.idea/
-
-# Ignore logs
-*.log
-
-# Ignore build outputs
-dist/
-build/
-.next/
-
-# Ignore OS-specific or temp files
-*.swp
-*.bak
-*~
-tmp/
-
-# Project-specific ignores
-*.db
-*.csv
-*.xlsx
-*.xls
-*.parquet
-datamind/data/
-
-# ── Testing & MCP artifacts ──
-.playwright-mcp/
-.env.local
-.env.*.local
+!.env.example
+!frontend/.env.example
 *.secret
 secrets.toml
+.streamlit/secrets.toml
 
-# ── Database files ──
+# ── User Uploaded Data, Lakes & Databases ──
+data/*
+backend/data/*
+!backend/data/uploads/
+backend/data/uploads/*
+!backend/data/uploads/.gitkeep
+uploads/*
+!uploads/.gitkeep
+*.parquet
+*.db
 *.db-shm
 *.db-wal
 *.sqlite
 *.sqlite3
+*.csv
+*.xlsx
+*.xls
+!backend/tests/fixtures/**
 
-# ── User uploaded data ──
-data/
-uploads/
-**/uploads/
-
-# ── Generated artifacts ──
-artifacts/
-scratch/
-
-# ── Python cache (extras) ──
+# ── Python Environments & Caches ──
+.venv/
+venv/
+__pycache__/
+*.py[cod]
 *$py.class
 *.pyo
 .pytest_cache/
+.ruff_cache/
 .mypy_cache/
+*.egg-info/
 
-# ── Data files that may contain real data (extras) ──
-!.env.example
-!requirements.txt
-!README.md
+# ── Frontend Dependencies & Build Outputs ──
+node_modules/
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/tsconfig.tsbuildinfo
+dist/
+build/
+.next/
 
-# ── OS files (extras) ──
+# ── Logs, Playwright & Generated Artifacts ──
+*.log
+*.tmp
+*.swp
+*.swo
+*.bak
+*~
+tmp/
+artifacts/
+scratch/
+.playwright-mcp/
+playwright-report/
+test-results/
+
+# ── OS & IDE Files ──
+.DS_Store
 .DS_Store?
 ._*
+Thumbs.db
 ehthumbs.db
-
-# ── IDE (extras) ──
-.vscode/settings.json
-*.swo
-
-# ── Streamlit ──
-.streamlit/secrets.toml
-
-# ── Build (extras) ──
-*.egg-info/
+.vscode/
+.idea/
