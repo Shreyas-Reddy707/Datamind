@@ -55,9 +55,9 @@ export default function RegisterPage() {
               DataMind<span className="text-emerald-400">.v2</span>
             </span>
           </Link>
-          <h1 className="text-xl font-semibold text-zinc-100">Create workspace account</h1>
+          <h1 className="text-xl font-semibold text-zinc-100">Create your private workspace</h1>
           <p className="text-xs text-zinc-400 mt-1 font-mono">
-            ZERO EGRESS // ISOLATED TENANCY
+            Private, Secure Data Workspace
           </p>
         </div>
 
@@ -105,7 +105,7 @@ export default function RegisterPage() {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="analyst@enterprise.com"
+                  placeholder="you@company.com"
                   className="w-full pl-10 pr-4 py-2.5 bg-zinc-900/90 border border-zinc-800 rounded-lg text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors font-mono"
                 />
               </div>
@@ -133,23 +133,23 @@ export default function RegisterPage() {
               </div>
             </div>
 
-            <div className="p-3 bg-zinc-900/60 rounded-lg border border-zinc-800 text-[11px] text-zinc-400 space-y-1">
+            <div className="p-3 bg-zinc-900/60 rounded-lg border border-zinc-800 text-[11px] text-zinc-400 space-y-1.5">
               <div className="flex items-center gap-1.5 text-emerald-400">
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>Argon2id cryptographic salt &amp; hash</span>
+                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                <span>🔒 Encrypted credentials &amp; private workspace</span>
               </div>
-              <div className="flex items-center gap-1.5 text-zinc-400">
-                <CheckCircle2 className="w-3.5 h-3.5 text-zinc-500" />
-                <span>Isolated tenant workspace with row-level security</span>
+              <div className="flex items-center gap-1.5 text-zinc-300">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400/70 shrink-0" />
+                <span>🛡️ Your uploaded files and insights stay strictly private to your account</span>
               </div>
             </div>
 
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full py-2.5 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-black font-semibold text-sm rounded-lg transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2"
+              className="w-full py-2.5 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-black font-semibold text-sm rounded-lg transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 cursor-pointer"
             >
-              {isLoading ? "Provisioning..." : "Create Account"}
+              {isLoading ? "Setting Up Workspace..." : "Create Free Account"}
               <ArrowRight className="w-4 h-4" />
             </button>
           </form>

@@ -134,7 +134,7 @@ export function RightChat({ fileId }: RightChatProps) {
 
     setIsStreaming(true);
     setStreamBuffer("");
-    setCurrentAgentStep("Perceiving Query & Schema Constraints...");
+    setCurrentAgentStep("Analyzing your question...");
     setActiveTier(1);
 
     let accumulatedText = "";
@@ -228,10 +228,10 @@ export function RightChat({ fileId }: RightChatProps) {
   };
 
   const suggestions = [
-    "What is the average adr by hotel?",
-    "Switch to Forensic Lab and plot adr by hotel",
-    "Which country has the most cancellations?",
-    "What datasets do I have uploaded?",
+    "Summarize the key takeaways in this file",
+    "What factors drive cancellations the most?",
+    "Build a chart comparing my top categories",
+    "How do I use the Predict & Simulate tab?",
   ];
 
   if (!isChatOpen) {
@@ -264,13 +264,12 @@ export function RightChat({ fileId }: RightChatProps) {
             <div className="w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center shrink-0">
               <BrainCircuit className="w-4 h-4 text-emerald-400" />
             </div>
-            <div>
+            <div className="min-w-0">
               <h3 className="text-xs font-mono font-bold text-white flex items-center gap-1.5">
-                <span>Cognitive Brain</span>
-                <span className="text-[10px] text-emerald-400 font-normal">v2</span>
+                <span className="truncate">DataMind AI Assistant</span>
               </h3>
-              <span className="text-[10px] font-mono text-zinc-500">
-                3-Tier Agentic Analyst
+              <span className="text-[10px] font-mono text-zinc-500 block truncate max-w-[180px]" title="Ask about your data, charts, predictions, or how to use this workspace">
+                Data, charts, predictions &amp; help
               </span>
             </div>
           </div>
@@ -328,9 +327,9 @@ export function RightChat({ fileId }: RightChatProps) {
               <span>Minimal Local Engine Active (Ollama Offline)</span>
             </div>
             <ul className="space-y-1 text-zinc-400 pl-1">
-              <li>• Any column stats (avg, min/max, median, nulls, correlations, group-bys)</li>
-              <li>• Dataset summaries, forensic outliers &amp; AutoML driver explanations</li>
-              <li>• Agentic workspace actions (&quot;Switch to AutoML&quot;, &quot;Plot adr by hotel&quot;)</li>
+              <li>• Any column stats (average, min/max, median, empty values, group-bys)</li>
+              <li>• Dataset summaries, key patterns &amp; factor explanations</li>
+              <li>• Workspace commands (&quot;Open Predict &amp; Simulate&quot;, &quot;Plot adr by hotel&quot;)</li>
             </ul>
             <p className="text-emerald-400/90 pt-0.5">
               Tip: Run &quot;ollama serve&quot; locally to unlock open-ended generative reasoning.
@@ -344,9 +343,9 @@ export function RightChat({ fileId }: RightChatProps) {
         <div className="bg-zinc-900 border-b border-zinc-800 px-4 py-2 flex items-center justify-between text-xs font-mono text-cyan-400 shrink-0">
           <div className="flex items-center gap-2 truncate">
             <RefreshCw className="w-3.5 h-3.5 animate-spin text-cyan-400 shrink-0" />
-            <span className="truncate">{currentAgentStep || "Reasoning over schema..."}</span>
+            <span className="truncate">{currentAgentStep || "Analyzing your question..."}</span>
           </div>
-          <span className="text-[10px] text-zinc-500 font-mono shrink-0">SSE STREAM</span>
+          <span className="text-[10px] text-zinc-500 font-mono shrink-0">LIVE</span>
         </div>
       )}
 
@@ -359,10 +358,10 @@ export function RightChat({ fileId }: RightChatProps) {
             </div>
             <div>
               <p className="text-xs font-semibold text-zinc-300">
-                Cognitive Analytical Partner
+                DataMind AI Assistant
               </p>
-              <p className="text-[11px] text-zinc-500 mt-1 max-w-[270px] mx-auto">
-                Ask questions about any column, run DuckDB group-bys, or command tabs &amp; charts directly.
+              <p className="text-[11px] text-zinc-500 mt-1 max-w-[290px] mx-auto">
+                Ask about your data, charts, predictions, or how to use this workspace.
               </p>
             </div>
 
@@ -437,7 +436,16 @@ export function RightChat({ fileId }: RightChatProps) {
 
               {/* Message Footer Telemetry */}
               <div className="flex items-center gap-2 text-[10px] text-zinc-500 px-1">
-                <span>{isUser ? "Operator" : `Agent (Tier ${msg.tier || 1})`}</span>
+                <span>{isUser ? "You" : "DataMind AI"}</span>
+                {!isUser && (
+                  <span className="px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-400">
+                    {msg.tier === 3
+                      ? "🔬 Deep Analysis"
+                      : msg.tier === 2
+                        ? "💬 AI Response"
+                        : "⚡ Instant Answer"}
+                  </span>
+                )}
                 {showLatency ? <span>• {msg.latency_ms}ms</span> : null}
               </div>
             </div>
@@ -473,7 +481,7 @@ export function RightChat({ fileId }: RightChatProps) {
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
             disabled={isStreaming}
-            placeholder="Ask agent about columns, trends, or UI commands..."
+            placeholder="Ask about your data, charts, or commands..."
             className="w-full pl-3.5 pr-10 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-emerald-500 font-mono disabled:opacity-50"
           />
           <button

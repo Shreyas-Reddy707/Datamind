@@ -170,10 +170,10 @@ export function PlotlyCanvas({ spec, title }: PlotlyCanvasProps) {
           {effective3D ? <Box className="w-3.5 h-3.5" /> : <Layers className="w-3.5 h-3.5" />}
           <span>
             {effective3D
-              ? "3D WebGL Active"
+              ? "3D View"
               : isEligibleFor3D
-              ? "2D Vector Mode"
-              : "3D Unavailable"}
+              ? "2D View"
+              : "2D View (3D N/A)"}
           </span>
         </button>
       </div>

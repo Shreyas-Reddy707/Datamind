@@ -170,18 +170,17 @@ async def get_lab_forensic_endpoint(
         })
 
     report = (
-        f"## Forensic Integrity Briefing: {user_file.display_name}\n\n"
-        f"### Context\n"
-        f"Vectorized ingestion completed for `{user_file.display_name}` ({gf.row_count:,} rows, {gf.col_count} dimensions). "
-        f"Overall dataset integrity evaluated at {health_score}/100.\n\n"
-        f"### Key Findings\n"
+        f"## Key Insights & Data Summary: {user_file.display_name}\n\n"
+        f"### Background\n"
+        f"`{user_file.display_name}` loaded with {gf.row_count:,} rows across {gf.col_count} columns. "
+        f"Overall Data Quality Score: {health_score}/100.\n\n"
+        f"### What We Found\n"
         + "\n".join(f"- **{f['title']}**: {f['description']}" for f in findings)
         + "\n\n"
-        f"### Empirical Evidence\n"
-        f"Total missing cells: {profile.get('total_nulls', 0):,} ({profile.get('null_percentage', 0)}% of dataset). "
-        f"Memory footprint optimized in zero-copy Parquet.\n\n"
-        f"### Strategic Implication\n"
-        f"Dataset is structurally validated for automated feature selection, statistical hypothesis tests, and AutoML benchmarking."
+        f"### Data Proof\n"
+        f"Total empty cells: {profile.get('total_nulls', 0):,} ({profile.get('null_percentage', 0)}% of all values).\n\n"
+        f"### What It Means / Next Step\n"
+        f"Your dataset is clean enough for instant charts, Smart Tables, and Predict & Simulate modeling."
     )
 
     # Save to AnalysisMemory

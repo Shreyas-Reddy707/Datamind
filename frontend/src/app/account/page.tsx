@@ -48,16 +48,16 @@ export default function AccountPage() {
       </Link>
 
       <div className="space-y-1">
-        <h1 className="text-2xl font-bold tracking-tight text-white">Account Profile</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-white">Your Account</h1>
         <p className="text-xs font-mono text-zinc-400">
-          OWASP Identity &amp; Tenant Credentials
+          Private login details and workspace access level
         </p>
       </div>
 
       {isLoading && (
         <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-12 flex flex-col items-center justify-center space-y-3">
           <RefreshCw className="w-6 h-6 animate-spin text-emerald-400" />
-          <p className="text-xs font-mono text-zinc-400">Loading authenticated identity...</p>
+          <p className="text-xs font-mono text-zinc-400">Loading your profile...</p>
         </div>
       )}
 
@@ -84,11 +84,11 @@ export default function AccountPage() {
 
           <div className="grid grid-cols-2 gap-4 pt-2">
             <div>
-              <span className="text-zinc-500 block uppercase text-[10px]">Organization ID</span>
+              <span className="text-zinc-500 block uppercase text-[10px]">Workspace Team ID</span>
               <span className="text-zinc-200 font-semibold">{user.org_id}</span>
             </div>
             <div>
-              <span className="text-zinc-500 block uppercase text-[10px]">RBAC Role</span>
+              <span className="text-zinc-500 block uppercase text-[10px]">Access Role</span>
               <span className="text-emerald-400 font-semibold uppercase">{user.role}</span>
             </div>
           </div>

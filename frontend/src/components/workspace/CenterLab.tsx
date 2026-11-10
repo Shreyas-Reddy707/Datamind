@@ -309,10 +309,10 @@ export function CenterLab({ overview, fileId }: CenterLabProps) {
   };
 
   const tabs: Array<{ id: LabTab; label: string; icon: any }> = [
-    { id: "overview", label: "Overview & Data Explorer", icon: TableIcon },
-    { id: "forensic", label: "Forensic Analytics Lab", icon: ShieldAlert },
-    { id: "predict", label: "Predictive AutoML Lab", icon: Activity },
-    { id: "sql", label: "Smart Query & Pivot", icon: SlidersHorizontal },
+    { id: "overview", label: "Overview & Data", icon: TableIcon },
+    { id: "forensic", label: "Insights & Charts", icon: ShieldAlert },
+    { id: "predict", label: "Predict & Simulate", icon: Activity },
+    { id: "sql", label: "Smart Tables & Pivot", icon: SlidersHorizontal },
   ];
 
   return (
@@ -347,10 +347,10 @@ export function CenterLab({ overview, fileId }: CenterLabProps) {
         <button
           onClick={handlePrintExport}
           className="flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-mono text-zinc-400 hover:text-white border border-zinc-800 hover:border-zinc-700 transition-colors"
-          title="Export current analytical view as PDF or print briefing"
+          title="Save or print a summary report of this view as a PDF"
         >
           <Download className="w-3.5 h-3.5 text-emerald-400" />
-          <span>Export Briefing</span>
+          <span>Download Report (PDF)</span>
         </button>
       </div>
 
@@ -373,16 +373,16 @@ export function CenterLab({ overview, fileId }: CenterLabProps) {
                 <div>
                   <h3 className="text-sm font-semibold text-white font-mono flex items-center gap-2">
                     <FileText className="w-4 h-4 text-emerald-400" />
-                    Dataset Structural Profile
+                    Dataset Overview &amp; Data Quality Score
                   </h3>
                   <p className="text-xs text-zinc-400 font-mono mt-1">
-                    Parquet Vectorized Instance // Mounted in DuckDB Engine
+                    Summary of column types, completeness, and automated data cleanup checks
                   </p>
 
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-6">
                     <div className="p-3 bg-zinc-900/60 rounded-lg border border-zinc-800">
                       <span className="text-[10px] font-mono text-zinc-500 uppercase block">
-                        Numeric Features
+                        Number Columns
                       </span>
                       <span className="text-lg font-mono font-bold text-cyan-400">
                         {overview?.profile?.numeric_columns?.length ?? 0}
@@ -391,7 +391,7 @@ export function CenterLab({ overview, fileId }: CenterLabProps) {
 
                     <div className="p-3 bg-zinc-900/60 rounded-lg border border-zinc-800">
                       <span className="text-[10px] font-mono text-zinc-500 uppercase block">
-                        Categorical Features
+                        Text / Category Columns
                       </span>
                       <span className="text-lg font-mono font-bold text-emerald-400">
                         {overview?.profile?.categorical_columns?.length ?? 0}
@@ -400,19 +400,19 @@ export function CenterLab({ overview, fileId }: CenterLabProps) {
 
                     <div className="p-3 bg-zinc-900/60 rounded-lg border border-zinc-800">
                       <span className="text-[10px] font-mono text-zinc-500 uppercase block">
-                        Ref Deduplication
+                        Total Rows
                       </span>
                       <span className="text-lg font-mono font-bold text-amber-400">
-                        {overview?.ref_count ?? 1}x
+                        {safeLocale(overview?.row_count, "0")}
                       </span>
                     </div>
 
                     <div className="p-3 bg-zinc-900/60 rounded-lg border border-zinc-800">
                       <span className="text-[10px] font-mono text-zinc-500 uppercase block">
-                        DuckDB Threads
+                        Processing Mode
                       </span>
                       <span className="text-lg font-mono font-bold text-zinc-200">
-                        2 (512MB RAM)
+                        Instant Local
                       </span>
                     </div>
                   </div>
@@ -422,7 +422,7 @@ export function CenterLab({ overview, fileId }: CenterLabProps) {
                   overview.profile.cleaning_recommendations.length > 0 && (
                     <div className="mt-4 pt-4 border-t border-zinc-800/80">
                       <span className="text-xs font-mono font-semibold text-zinc-300 block mb-2">
-                        Automated Cleansing Recommendations:
+                        Suggested Cleanup Actions:
                       </span>
                       <div className="space-y-1.5 font-mono text-xs">
                         {overview.profile.cleaning_recommendations.slice(0, 3).map((rec, i) => (
@@ -449,7 +449,7 @@ export function CenterLab({ overview, fileId }: CenterLabProps) {
                 <div className="flex items-center gap-2">
                   <TableIcon className="w-4 h-4 text-emerald-400" />
                   <h4 className="text-xs font-mono uppercase tracking-wider text-zinc-300 font-semibold">
-                    Interactive Data Explorer
+                    Browse &amp; Search Rows
                   </h4>
                   {previewData?.total_rows !== undefined && (
                     <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-zinc-900 text-zinc-400 border border-zinc-800">
@@ -541,17 +541,17 @@ export function CenterLab({ overview, fileId }: CenterLabProps) {
           </div>
         )}
 
-        {/* TAB 2: FORENSIC ANALYTICS LAB & EMBEDDED PLOTLY STUDIO */}
+        {/* TAB 2: INSIGHTS & CHARTS */}
         {activeLabTab === "forensic" && (
           <div className="space-y-6">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-base font-bold text-white flex items-center gap-2">
                   <ShieldAlert className="w-5 h-5 text-rose-400" />
-                  Forensic Analytics &amp; Visual Evidence Lab
+                  Key Insights &amp; Interactive Charts
                 </h3>
                 <p className="text-xs text-zinc-400 font-mono mt-0.5">
-                  Context &rarr; Finding &rarr; Evidence &rarr; Implication // Click any finding or column pill to render evidence
+                  Background &rarr; What We Found &rarr; Data Proof &rarr; Next Step // Click any insight card or column badge to automatically view its chart below.
                 </p>
               </div>
 
@@ -563,17 +563,17 @@ export function CenterLab({ overview, fileId }: CenterLabProps) {
                 <RefreshCw
                   className={`w-3.5 h-3.5 ${isForensicLoading ? "animate-spin text-emerald-400" : ""}`}
                 />
-                <span>Re-run Scan</span>
+                <span>Refresh Insights</span>
               </button>
             </div>
 
             {isForensicLoading ? (
               <div className="p-12 text-center text-xs font-mono text-zinc-500">
-                [Computing Benford&apos;s Law distributions and outlier matrices in DuckDB...]
+                Scanning columns for unusual patterns, outliers, and key relationships...
               </div>
             ) : forensicReport ? (
               <div className="space-y-6">
-                {/* Findings List */}
+                {/* Key Insights & Recommendations List */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {forensicReport.findings.map((finding, i) => {
                     const matchedCols = extractFindingColumns(finding);
@@ -582,14 +582,14 @@ export function CenterLab({ overview, fileId }: CenterLabProps) {
                         key={i}
                         onClick={() => handleInspectFindingEvidence(finding)}
                         className="rounded-xl border border-zinc-800 hover:border-emerald-500/40 bg-zinc-950/70 p-4 space-y-2.5 cursor-pointer transition-all group"
-                        title="Click to plot supporting visual evidence in Plotly Studio below"
+                        title="Click to automatically build a chart for this insight below"
                       >
                         <div className="flex items-center justify-between gap-2">
                           <span className="text-xs font-mono font-bold text-amber-400 uppercase group-hover:text-emerald-400 transition-colors">
-                            {String(finding.title || finding.metric || "Diagnostic Finding")}
+                            {String(finding.title || finding.metric || "Key Finding")}
                           </span>
                           <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-zinc-900 text-zinc-400 border border-zinc-800">
-                            {String(finding.severity || "MEDIUM")}
+                            {String(finding.severity || "INFO")}
                           </span>
                         </div>
                         <p className="text-xs text-zinc-300 leading-relaxed font-mono">
@@ -597,7 +597,7 @@ export function CenterLab({ overview, fileId }: CenterLabProps) {
                         </p>
                         {matchedCols.length > 0 && (
                           <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                            <span className="text-[10px] font-mono text-zinc-500">Visualize:</span>
+                            <span className="text-[10px] font-mono text-zinc-500">Plot column:</span>
                             {matchedCols.map((col) => (
                               <button
                                 key={col}
@@ -618,9 +618,9 @@ export function CenterLab({ overview, fileId }: CenterLabProps) {
                   })}
                 </div>
 
-                {/* Embedded Interactive Analytical Plotly Studio */}
+                {/* Embedded Interactive Analytical Chart Studio */}
                 <EmbeddedPlotlyStudio
-                  title="Forensic Interactive Plotly Studio (2D Vector & 3D WebGL)"
+                  title="Interactive Chart Studio (2D & 3D Views)"
                   columns={columns}
                   chartType={selectedChartType}
                   xCol={xCol}
@@ -636,12 +636,17 @@ export function CenterLab({ overview, fileId }: CenterLabProps) {
                   onGenerate={() => handleGenerateChart()}
                 />
 
-                {/* Full Forensic Briefing Markdown / Text */}
+                {/* Key Insights & Recommendations Summary */}
                 {forensicReport.report && (
                   <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-6 space-y-3">
-                    <h4 className="text-xs font-mono uppercase tracking-wider text-zinc-400">
-                      Senior Forensic Audit Briefing
-                    </h4>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <h4 className="text-xs font-mono uppercase tracking-wider text-zinc-300 font-semibold">
+                        Key Insights &amp; Recommendations
+                      </h4>
+                      <span className="text-[10px] font-mono text-zinc-500">
+                        Background &rarr; What We Found &rarr; Data Proof &rarr; What It Means / Next Step
+                      </span>
+                    </div>
                     <div className="text-xs font-mono text-zinc-300 leading-relaxed whitespace-pre-wrap bg-zinc-900/60 p-4 rounded-lg border border-zinc-800/80">
                       {forensicReport.report}
                     </div>
@@ -651,10 +656,10 @@ export function CenterLab({ overview, fileId }: CenterLabProps) {
             ) : (
               <div className="space-y-6">
                 <div className="p-8 text-center text-xs font-mono text-zinc-500 rounded-xl border border-dashed border-zinc-800">
-                  Click &quot;Re-run Scan&quot; to execute forensic integrity checks, or explore visualizations below.
+                  Click &quot;Refresh Insights&quot; to scan for automated findings, or customize any chart below.
                 </div>
                 <EmbeddedPlotlyStudio
-                  title="Forensic Interactive Plotly Studio (2D Vector & 3D WebGL)"
+                  title="Interactive Chart Studio (2D & 3D Views)"
                   columns={columns}
                   chartType={selectedChartType}
                   xCol={xCol}

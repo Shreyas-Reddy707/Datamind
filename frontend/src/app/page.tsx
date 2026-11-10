@@ -79,30 +79,30 @@ export default function LandingPage() {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
             {/* Left Column: Headlines & Actions */}
             <div className="lg:col-span-7 space-y-6">
-              {/* Telemetry Badges */}
+              {/* Value Badges */}
               <div className="flex flex-wrap gap-2 items-center">
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-mono border border-emerald-500/20 bg-emerald-500/5 text-emerald-400">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  ENGINE // DUCKDB 1.1 + PARQUET
+                  ⚡ Instant Answers (&lt;25ms)
                 </span>
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-mono border border-cyan-500/20 bg-cyan-500/5 text-cyan-400">
-                  <Cpu className="w-3 h-3" />
-                  COGNITION // 3-TIER AGENTS
+                  <ShieldCheck className="w-3 h-3" />
+                  🛡️ 100% Verified Columns (No Hallucinations)
                 </span>
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-mono border border-zinc-700 bg-zinc-900/60 text-zinc-300">
-                  <ShieldCheck className="w-3 h-3 text-emerald-400" />
-                  OWASP LEVEL-2
+                  <BarChart3 className="w-3 h-3 text-emerald-400" />
+                  📊 No-Code Charts, Tables &amp; Predictions
                 </span>
               </div>
 
               <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-white leading-[1.1]">
-                Autonomous Tabular Intelligence & Multi-Agent Analytics
+                Turn Any Spreadsheet Into Clear Insights, Charts &amp; Predictions
               </h1>
 
               <p className="text-base sm:text-lg text-zinc-400 leading-relaxed max-w-2xl">
-                Vectorized DuckDB in-process execution meets bounded LangGraph multi-agent loops.
-                Ingest CSV, Excel, or Parquet lakes and extract production-grade forensic diagnostics,
-                interactive 3D charts, and automated ML pipelines in sub-second cycles.
+                Upload CSV, Excel, JSON, or Parquet files and explore your data in seconds without
+                writing a single line of code. Discover hidden trends, build interactive 2D and 3D
+                charts, test &quot;What-If&quot; prediction scenarios, and chat with your data privately.
               </p>
 
               {/* Action Buttons */}
@@ -111,32 +111,32 @@ export default function LandingPage() {
                   href="/register"
                   className="inline-flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-black font-semibold text-sm px-5 py-2.5 rounded-lg transition-all shadow-xl shadow-emerald-500/20"
                 >
-                  Launch Workspace
+                  Create Free Account
                   <ArrowRight className="w-4 h-4" />
                 </Link>
                 <button
                   onClick={handleGuestAccess}
                   disabled={isGuestLoading}
-                  className="inline-flex items-center gap-2 border border-zinc-800 hover:border-zinc-700 bg-zinc-900/80 hover:bg-zinc-800 text-zinc-200 text-sm px-5 py-2.5 rounded-lg transition-colors font-mono"
+                  className="inline-flex items-center gap-2 border border-zinc-800 hover:border-zinc-700 bg-zinc-900/80 hover:bg-zinc-800 text-zinc-200 text-sm px-5 py-2.5 rounded-lg transition-colors font-mono cursor-pointer"
                 >
                   <Bot className="w-4 h-4 text-emerald-400" />
-                  {isGuestLoading ? "Provisioning Sandbox..." : "Instant Guest Demo"}
+                  {isGuestLoading ? "Opening Demo Workspace..." : "Try Instant Guest Demo"}
                 </button>
               </div>
 
-              {/* Live Spec Telemetry */}
+              {/* Plain-English Highlights */}
               <div className="pt-6 border-t border-zinc-800/80 grid grid-cols-3 gap-4 text-xs font-mono">
                 <div>
-                  <span className="text-zinc-500 block uppercase">Query Latency</span>
-                  <span className="text-zinc-200 font-semibold text-sm">&lt; 12ms</span>
+                  <span className="text-zinc-500 block uppercase">Instant Speed</span>
+                  <span className="text-zinc-200 font-semibold text-sm">&lt; 25ms Queries</span>
                 </div>
                 <div>
-                  <span className="text-zinc-500 block uppercase">Throughput</span>
-                  <span className="text-zinc-200 font-semibold text-sm">500,000 Rows/sec</span>
+                  <span className="text-zinc-500 block uppercase">File Support</span>
+                  <span className="text-zinc-200 font-semibold text-sm">CSV, Excel, Parquet</span>
                 </div>
                 <div>
-                  <span className="text-zinc-500 block uppercase">Agent Architecture</span>
-                  <span className="text-zinc-200 font-semibold text-sm">3-Tier Bounded</span>
+                  <span className="text-zinc-500 block uppercase">Privacy</span>
+                  <span className="text-zinc-200 font-semibold text-sm">Private Workspace</span>
                 </div>
               </div>
             </div>
@@ -148,146 +148,109 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* 3D Bento Grid Architecture Section */}
+        {/* 4 Core Workspace Capabilities */}
         <section className="max-w-7xl mx-auto px-6 py-20 border-t border-zinc-800/80">
           <div className="mb-12">
             <h2 className="text-xs font-mono uppercase tracking-widest text-emerald-400 mb-2">
-              System Architecture
+              Inside Your Workspace
             </h2>
             <p className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
-              Built for High-Stakes Quantitative Analysis
+              Four No-Code Tools Built Around Your Files
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {/* Bento Card 1: DuckDB */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Card 1: Key Insights & Interactive 3D Charts */}
             <TiltCard3D className="p-6 h-full flex flex-col justify-between">
               <div>
-                <div className="w-10 h-10 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mb-4">
-                  <Database className="w-5 h-5 text-emerald-400" />
+                <div className="w-10 h-10 rounded-lg bg-rose-500/10 border border-rose-500/20 flex items-center justify-center mb-4">
+                  <BarChart3 className="w-5 h-5 text-rose-400" />
                 </div>
                 <h3 className="text-lg font-semibold text-white mb-2">
-                  Vectorized Parquet Engine
+                  Key Insights &amp; Interactive 3D Charts
                 </h3>
                 <p className="text-sm text-zinc-400 leading-relaxed">
-                  In-process DuckDB executes analytical SQL directly on columnar Parquet slices.
-                  Multi-file relational joins occur in RAM without cloud data egress.
+                  Automatically spots patterns, anomalies, and trends explained in plain English
+                  (Background &rarr; What We Found &rarr; Data Proof &rarr; Next Step) alongside
+                  interactive 2D and 3D charts on the same screen.
                 </p>
               </div>
               <div className="mt-6 pt-4 border-t border-zinc-800/80 flex items-center justify-between text-xs font-mono text-zinc-500">
-                <span>DUCKDB 1.1</span>
-                <span className="text-emerald-400">ZERO EGRESS</span>
+                <span>INSIGHTS &amp; CHARTS TAB</span>
+                <span className="text-rose-400">2D &amp; 3D VISUALS</span>
               </div>
             </TiltCard3D>
 
-            {/* Bento Card 2: 3-Tier Multi-Agent */}
-            <TiltCard3D className="p-6 h-full flex flex-col justify-between">
-              <div>
-                <div className="w-10 h-10 rounded-lg bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center mb-4">
-                  <BrainCircuit className="w-5 h-5 text-cyan-400" />
-                </div>
-                <h3 className="text-lg font-semibold text-white mb-2">
-                  3-Tier Cognitive Brain
-                </h3>
-                <p className="text-sm text-zinc-400 leading-relaxed">
-                  Tier 1 delivers instant SQL (&lt;100ms). Tier 2 produces forensic diagnostics.
-                  Tier 3 orchestrates LangGraph multi-step hypothesis testing and auto-remediation.
-                </p>
-              </div>
-              <div className="mt-6 pt-4 border-t border-zinc-800/80 flex items-center justify-between text-xs font-mono text-zinc-500">
-                <span>LANGGRAPH</span>
-                <span className="text-cyan-400">BOUNDED LOOPS</span>
-              </div>
-            </TiltCard3D>
-
-            {/* Bento Card 3: Autonomous AutoML */}
+            {/* Card 2: Predictions & What-If Simulator */}
             <TiltCard3D className="p-6 h-full flex flex-col justify-between">
               <div>
                 <div className="w-10 h-10 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center mb-4">
                   <Activity className="w-5 h-5 text-amber-400" />
                 </div>
                 <h3 className="text-lg font-semibold text-white mb-2">
-                  Autonomous AutoML Lab
+                  Predictions &amp; &quot;What-If&quot; Simulator
                 </h3>
                 <p className="text-sm text-zinc-400 leading-relaxed">
-                  Diagnoses task formulation, handles class imbalances, runs 5-fold cross-validation,
-                  and serves model leaderboards with feature importance matrices.
+                  Pick any column you want to predict (like cancellations, sales, or price). DataMind
+                  tests multiple AI models automatically, highlights top drivers, and lets you move
+                  sliders to simulate future outcomes.
                 </p>
               </div>
               <div className="mt-6 pt-4 border-t border-zinc-800/80 flex items-center justify-between text-xs font-mono text-zinc-500">
-                <span>SCIKIT-LEARN</span>
-                <span className="text-amber-400">CV-OPTIMIZED</span>
+                <span>PREDICT &amp; SIMULATE TAB</span>
+                <span className="text-amber-400">LIVE SIMULATOR</span>
               </div>
             </TiltCard3D>
 
-            {/* Bento Card 4: Forensic Quality */}
-            <TiltCard3D className="p-6 h-full flex flex-col justify-between">
-              <div>
-                <div className="w-10 h-10 rounded-lg bg-rose-500/10 border border-rose-500/20 flex items-center justify-center mb-4">
-                  <ShieldCheck className="w-5 h-5 text-rose-400" />
-                </div>
-                <h3 className="text-lg font-semibold text-white mb-2">
-                  Forensic Data Diagnostics
-                </h3>
-                <p className="text-sm text-zinc-400 leading-relaxed">
-                  Automatically flags null pattern shifts, duplicate rows, skewness, Benford&apos;s Law
-                  deviations, and suggests actionable remediation recipes.
-                </p>
-              </div>
-              <div className="mt-6 pt-4 border-t border-zinc-800/80 flex items-center justify-between text-xs font-mono text-zinc-500">
-                <span>FORENSIC SCAN</span>
-                <span className="text-rose-400">HEALTH SCORE</span>
-              </div>
-            </TiltCard3D>
-
-            {/* Bento Card 5: Self-Learning Episodic Memory */}
+            {/* Card 3: No-Code Smart Tables & Multi-File Combiner */}
             <TiltCard3D className="p-6 h-full flex flex-col justify-between">
               <div>
                 <div className="w-10 h-10 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mb-4">
                   <Layers className="w-5 h-5 text-emerald-400" />
                 </div>
                 <h3 className="text-lg font-semibold text-white mb-2">
-                  Episodic Semantic Memory
+                  No-Code Smart Tables &amp; Multi-File Combiner
                 </h3>
                 <p className="text-sm text-zinc-400 leading-relaxed">
-                  PostgreSQL pgvector stores analytical findings, query patterns, and user feedback
-                  to continuously improve future agent reasoning.
+                  Ask for any summary table in plain English, click visual filters and groupings, or
+                  combine multiple uploaded files and Excel sheets without writing a single line of
+                  SQL.
                 </p>
               </div>
               <div className="mt-6 pt-4 border-t border-zinc-800/80 flex items-center justify-between text-xs font-mono text-zinc-500">
-                <span>PGVECTOR</span>
-                <span className="text-emerald-400">SEMANTIC RECALL</span>
+                <span>SMART TABLES &amp; PIVOT</span>
+                <span className="text-emerald-400">NO SQL REQUIRED</span>
               </div>
             </TiltCard3D>
 
-            {/* Bento Card 6: OWASP Top-10 Hardened */}
+            {/* Card 4: Ask DataMind AI Assistant */}
             <TiltCard3D className="p-6 h-full flex flex-col justify-between">
               <div>
-                <div className="w-10 h-10 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center mb-4">
-                  <Cpu className="w-5 h-5 text-blue-400" />
+                <div className="w-10 h-10 rounded-lg bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center mb-4">
+                  <BrainCircuit className="w-5 h-5 text-cyan-400" />
                 </div>
                 <h3 className="text-lg font-semibold text-white mb-2">
-                  Enterprise Security Core
+                  Ask DataMind AI Assistant
                 </h3>
                 <p className="text-sm text-zinc-400 leading-relaxed">
-                  Argon2id hashing, 5-attempt account lockout, rotating HttpOnly refresh tokens,
-                  magic-byte upload filters, and strict tenant isolation.
+                  Chat with your data in plain language to get instant numbers and explanations, or
+                  let the assistant switch tabs, build charts, and run predictions for you.
                 </p>
               </div>
               <div className="mt-6 pt-4 border-t border-zinc-800/80 flex items-center justify-between text-xs font-mono text-zinc-500">
-                <span>ARGON2ID</span>
-                <span className="text-blue-400">ZERO TRUST</span>
+                <span>AI ASSISTANT DRAWER</span>
+                <span className="text-cyan-400">VERIFIED ANSWERS</span>
               </div>
             </TiltCard3D>
           </div>
         </section>
       </main>
 
-      {/* Industrial Footer */}
+      {/* Footer */}
       <footer className="border-t border-zinc-800/80 bg-zinc-950 py-10 px-6">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs font-mono text-zinc-500">
           <div>
-            DataMind v2 Platform // Built for Analytical Rigor
+            DataMind v2 — Private No-Code Data Intelligence
           </div>
           <div className="flex items-center gap-6">
             <Link href="/terms" className="hover:text-zinc-300 transition-colors">

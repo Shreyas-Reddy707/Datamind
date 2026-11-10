@@ -107,19 +107,19 @@ def _detect_ui_actions(
     requested_tab: str | None = None
     tab_label = ""
     wants_nav = any(k in q_low for k in ["switch", "go to", "open", "show", "navigate", "take me"])
-    if wants_nav or re.search(r"\b(forensic lab|automl lab|sql sandbox)\b", q_low):
-        if any(k in q_low for k in ["forensic", "forensics", "outlier"]):
+    if wants_nav or re.search(r"\b(forensic lab|insights & charts|insights and charts|automl lab|predict & simulate|predict and simulate|smart tables|sql sandbox)\b", q_low):
+        if any(k in q_low for k in ["forensic", "forensics", "outlier", "insight", "insights & charts", "insights and charts"]):
             requested_tab = "forensic"
-            tab_label = "Switched to Forensic Analytics Lab"
-        elif any(k in q_low for k in ["automl", "auto ml", "prediction lab", "what-if"]):
+            tab_label = "Switched to Insights & Charts"
+        elif any(k in q_low for k in ["automl", "auto ml", "prediction", "predict & simulate", "predict and simulate", "what-if"]):
             requested_tab = "predict"
-            tab_label = "Switched to Predictive AutoML Lab"
-        elif any(k in q_low for k in ["sql", "duckdb"]):
+            tab_label = "Switched to Predict & Simulate"
+        elif any(k in q_low for k in ["smart table", "pivot", "sql", "duckdb"]):
             requested_tab = "sql"
-            tab_label = "Switched to DuckDB SQL Sandbox"
-        elif any(k in q_low for k in ["overview", "explorer", "data preview"]):
+            tab_label = "Switched to Smart Tables & Pivot"
+        elif any(k in q_low for k in ["overview", "explorer", "data preview", "overview & data"]):
             requested_tab = "overview"
-            tab_label = "Switched to Overview & Data Explorer"
+            tab_label = "Switched to Overview & Data"
 
     # 4. Chart generation / update
     wants_chart = any(
@@ -190,12 +190,12 @@ def _detect_ui_actions(
         matched_col = next((c for c in active_columns if c.lower() == cand), None)
         if matched_col:
             requested_tab = "predict"
-            tab_label = "Switched to Predictive AutoML Lab"
+            tab_label = "Switched to Predict & Simulate"
             automl_action = {
                 "type": "ui_action",
                 "action": "run_automl",
                 "payload": {"target_col": matched_col},
-                "label": f"Triggered AutoML benchmark (Target: {matched_col})",
+                "label": f"Started prediction run (Target Column: {matched_col})",
             }
 
     if requested_tab:
@@ -251,39 +251,39 @@ def _build_customer_help_response(
     model_note = ""
     if latest_pred and latest_pred.status == "completed" and latest_pred.target_column:
         model_note = (
-            f"\n\n**Active AutoML Benchmark on `{display_name}`**: "
+            f"\n\n**Active Prediction on `{display_name}`**: "
             f"Predicting **`{latest_pred.target_column}`** ({latest_pred.task_type}) "
             f"with **{latest_pred.best_model_name or 'best model'}**."
         )
 
     if any(k in q_low for k in ["automl", "auto ml", "feature weight", "what-if", "simulator", "predict"]):
         return (
-            f"### How Predictive AutoML Lab Works on `{display_name}`\n\n"
-            "1. **Leakage Quarantine & Data Readiness**: Scans all columns and blocks post-outcome columns that would distort predictions.\n"
-            "2. **Multi-Model Cross-Validation**: Automatically benchmarks algorithms (such as Random Forest, Gradient Boosting, Logistic Regression, or Ridge) and ranks them on the Model Benchmark Leaderboard.\n"
-            "3. **Feature Weights & Driver Impact Chart**: Ranks which columns drive the predicted target most strongly and plots the top drivers.\n"
-            "4. **What-If Outcome Simulator**: Lets you adjust sliders and category dropdowns for top drivers to test real scenarios and see how each factor pushes the predicted outcome up or down."
+            f"### How Predict & Simulate Works on `{display_name}`\n\n"
+            "1. **Automatic Data Protection**: Scans every column and excludes post-outcome columns so your predictions stay realistic and honest.\n"
+            "2. **AI Model Comparison**: Automatically tests multiple models (such as Random Forest, Gradient Boosting, Logistic Regression, or Ridge) and highlights the best performer.\n"
+            "3. **Top Driving Factors**: Ranks which columns influence your target column the most and plots their impact.\n"
+            "4. **What-If Outcome Simulator**: Move sliders and dropdowns for top factors to test real scenarios and see how outcomes change in real time."
             f"{model_note}\n\n"
-            "Open the **Predictive AutoML Lab** tab and click **Train Models** (or adjust the **What-If Simulator** sliders) to explore scenarios!"
+            "Open the **Predict & Simulate** tab and click **Run Prediction** (or move the **What-If Simulator** sliders) to try scenarios!"
         )
 
-    if any(k in q_low for k in ["forensic", "chart", "plot", "sql"]):
-        sql_example = "`SELECT * FROM dataset LIMIT 20`"
+    if any(k in q_low for k in ["forensic", "chart", "plot", "sql", "smart table", "pivot", "insight"]):
         return (
             f"### Exploring `{display_name}` ({row_count:,} rows × {len(cols)} columns)\n\n"
-            "- **Forensic Analytics Lab**: Combines automated integrity findings (*Context → Finding → Evidence → Implication*) with an embedded **Interactive Plotly Studio** (2D charts & 3D WebGL). Click any finding card to visualize its columns.\n"
-            f"- **DuckDB SQL Sandbox**: Run fast read-only SQL queries directly against `dataset` (e.g. {sql_example}).\n"
-            "- **Predictive AutoML Lab**: Train predictive models, inspect driver weights, and test scenarios in the **What-If Simulator**."
+            "- **Insights & Charts**: Combines automatic findings (*Background → What We Found → Data Proof → Next Step*) with interactive 2D & 3D charts. Click any insight card to plot it.\n"
+            "- **Smart Tables & Pivot**: Ask for summary tables in plain English, pick visual groupings and filters, or combine multiple files without writing any SQL.\n"
+            "- **Predict & Simulate**: Train models, inspect top driving factors, and test scenarios in the **What-If Simulator**."
         )
 
     return (
-        f"Hello! I'm your **DataMind Analytical Partner** for **`{display_name}`** "
+        f"Hello! I'm your **DataMind AI Assistant** for **`{display_name}`** "
         f"({row_count:,} rows × {len(cols)} columns).\n\n"
         f"**Key columns detected**: {col_sample}\n\n"
         "Here are a few ways I can help right now:\n"
         "- **Ask about your data**: *\"How many rows are there?\"* or *\"How do lead_time and deposit_type affect is_canceled?\"*\n"
-        "- **Explore drivers & predictions**: Open **Predictive AutoML Lab** to benchmark models and test scenarios in the **What-If Simulator**.\n"
-        "- **Visual evidence**: Open **Forensic Analytics Lab** to click findings and update the embedded Plotly Studio."
+        "- **Explore drivers & predictions**: Open **Predict & Simulate** to compare AI models and test scenarios in the **What-If Simulator**.\n"
+        "- **Insights & visuals**: Open **Insights & Charts** to click any finding and view interactive 2D or 3D charts.\n"
+        "- **Custom summary tables**: Open **Smart Tables & Pivot** to build custom tables in plain English without writing SQL."
         f"{model_note}"
     )
 
@@ -335,7 +335,7 @@ def _build_data_aware_fallback(
             y_type = str(cols_meta.get(outcome_col, {}).get("dtype", "")).lower()
             y_is_num = any(t in y_type for t in ["int", "float", "double", "decimal", "numeric"])
 
-            sections.append(f"### Empirical Impact on `{outcome_col}`")
+            sections.append(f"### How Factors Affect `{outcome_col}`")
             for drv in drivers:
                 esc_x = f'"{drv.replace(chr(34), chr(34) * 2)}"'
                 x_type = str(cols_meta.get(drv, {}).get("dtype", "")).lower()
@@ -539,7 +539,7 @@ async def chat_stream_endpoint(
             yield _format_sse("token", full_response_text)
 
         elif tier == 1:
-            yield _format_sse("agent_status", {"status": "Executing Tier 1 instant DuckDB computation...", "step": 1})
+            yield _format_sse("agent_status", {"status": "Computing instant answer...", "step": 1})
             cached = await query_cache.get(current_user.id, user_file.id, request.query)
             if cached and cached.get("text"):
                 full_response_text = cached.get("text", "")
@@ -569,7 +569,7 @@ async def chat_stream_endpoint(
                 )
 
         elif tier == 2:
-            yield _format_sse("agent_status", {"status": "Retrieving context & generating quick briefing...", "step": 1})
+            yield _format_sse("agent_status", {"status": "Preparing AI response...", "step": 1})
             cached = await query_cache.get(current_user.id, user_file.id, request.query)
             if cached and cached.get("text"):
                 full_response_text = cached.get("text", "")
@@ -614,7 +614,7 @@ async def chat_stream_endpoint(
 
         else:
             # Tier 3: Bounded LangGraph Multi-Agent Pipeline
-            yield _format_sse("agent_status", {"status": "Initializing Bounded LangGraph Multi-Agent Brain...", "step": 1})
+            yield _format_sse("agent_status", {"status": "Running deep analysis across columns...", "step": 1})
 
             agent_graph = build_agent_graph()
             data_profile = await asyncio.to_thread(DuckDBManager.generate_data_profile, gf.parquet_path)

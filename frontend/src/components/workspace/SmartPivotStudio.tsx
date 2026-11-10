@@ -524,10 +524,10 @@ export function SmartPivotStudio({
           <div>
             <h3 className="text-sm font-semibold text-white font-mono flex items-center gap-2">
               <SlidersHorizontal className="w-4 h-4 text-emerald-400" />
-              Smart Data Explorer &amp; Pivot Studio
+              Ask for a Table in Plain English
             </h3>
             <p className="text-[11px] text-zinc-400 font-mono mt-0.5">
-              Ask in plain English or click filters &amp; groupings below — zero SQL required
+              Type any summary request below or click filters and groupings — zero SQL required
             </p>
           </div>
           {result?.execution_time_ms !== undefined && (
@@ -566,7 +566,7 @@ export function SmartPivotStudio({
         {presets.length > 0 && (
           <div className="flex flex-wrap items-center gap-1.5 pt-1">
             <span className="text-[10px] font-mono uppercase text-zinc-500 mr-1">
-              1-Click Presets:
+              Quick Summary Tables (1-Click):
             </span>
             {presets.map((preset) => (
               <button
@@ -594,7 +594,7 @@ export function SmartPivotStudio({
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-mono font-semibold text-zinc-200 flex items-center gap-1.5">
                 <Layers className="w-3.5 h-3.5 text-emerald-400" />
-                Group By (Categories)
+                Group Rows By
               </span>
               <button
                 type="button"
@@ -661,7 +661,7 @@ export function SmartPivotStudio({
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-mono font-semibold text-zinc-200 flex items-center gap-1.5">
                 <BarChart3 className="w-3.5 h-3.5 text-cyan-400" />
-                What to Calculate (Metrics)
+                Calculate
               </span>
               <button
                 type="button"
@@ -750,7 +750,7 @@ export function SmartPivotStudio({
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-mono font-semibold text-zinc-200 flex items-center gap-1.5">
                 <Filter className="w-3.5 h-3.5 text-amber-400" />
-                Filter Rows (Optional)
+                Filter Data
               </span>
               <button
                 type="button"
@@ -1005,7 +1005,7 @@ export function SmartPivotStudio({
                 className="px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-200 text-xs font-mono transition-colors flex items-center gap-1.5 cursor-pointer"
               >
                 <Download className="w-3.5 h-3.5 text-cyan-400" />
-                <span>Export Table (CSV)</span>
+                <span>Download CSV</span>
               </button>
             </div>
 

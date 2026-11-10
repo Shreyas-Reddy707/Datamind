@@ -359,10 +359,10 @@ export function PredictionLab({ fileId, columns }: PredictionLabProps) {
           <div>
             <h3 className="text-sm font-semibold text-white flex items-center gap-2">
               <Activity className="w-4 h-4 text-emerald-400" />
-              Automated Machine Learning &amp; Benchmarking
+              Predict Outcomes &amp; Test &quot;What-If&quot; Scenarios
             </h3>
             <p className="text-xs text-zinc-400 font-mono mt-0.5">
-              Taskiq asynchronous workers // Stratified cross-validation // Scikit-Learn
+              Pick any column you want to predict. DataMind automatically trains and compares multiple AI models to find what drives your results.
             </p>
           </div>
 
@@ -377,7 +377,7 @@ export function PredictionLab({ fileId, columns }: PredictionLabProps) {
               ) : (
                 <CheckCircle2 className="w-3.5 h-3.5 text-cyan-400" />
               )}
-              <span>Diagnose Readiness</span>
+              <span>Check Data Readiness</span>
             </button>
 
             <button
@@ -390,7 +390,7 @@ export function PredictionLab({ fileId, columns }: PredictionLabProps) {
               ) : (
                 <Play className="w-3.5 h-3.5 text-black fill-black" />
               )}
-              <span>{isTraining ? "Training Models..." : "Train Models"}</span>
+              <span>{isTraining ? "Training AI Models..." : "Run Prediction"}</span>
             </button>
           </div>
         </div>
@@ -399,14 +399,14 @@ export function PredictionLab({ fileId, columns }: PredictionLabProps) {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-zinc-800/80">
           <div>
             <label className="block text-[11px] font-mono uppercase text-zinc-400 mb-1.5">
-              Target Column (Predictand)
+              What do you want to predict? (Target Column)
             </label>
             <select
               value={selectedTarget}
               onChange={(e) => setSelectedTarget(e.target.value)}
               className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-xs text-zinc-200 font-mono focus:outline-none focus:border-emerald-500"
             >
-              <option value="">[Auto-Detect Optimal Target]</option>
+              <option value="">[Auto-Detect Best Column]</option>
               {columns.map((col) => (
                 <option key={col} value={col}>
                   {col}
@@ -417,7 +417,7 @@ export function PredictionLab({ fileId, columns }: PredictionLabProps) {
 
           <div>
             <label className="block text-[11px] font-mono uppercase text-zinc-400 mb-1.5">
-              Task Formulation
+              Prediction Type
             </label>
             <select
               value={selectedTaskType || ""}
@@ -428,11 +428,11 @@ export function PredictionLab({ fileId, columns }: PredictionLabProps) {
               }
               className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-xs text-zinc-200 font-mono focus:outline-none focus:border-emerald-500"
             >
-              <option value="">[Auto-Infer Classification vs Regression]</option>
-              <option value="classification">Classification (Discrete Classes)</option>
-              <option value="regression">Regression (Continuous Values)</option>
-              <option value="clustering">Unsupervised Clustering</option>
-              <option value="timeseries">Time-Series Forecast</option>
+              <option value="">[Auto-Detect]</option>
+              <option value="classification">Category / Yes-No</option>
+              <option value="regression">Number / Value</option>
+              <option value="clustering">Customer / Row Groups (Clustering)</option>
+              <option value="timeseries">Time Trend Forecast</option>
             </select>
           </div>
         </div>
@@ -446,7 +446,7 @@ export function PredictionLab({ fileId, columns }: PredictionLabProps) {
         {history.length > 0 && (
           <div className="pt-3 border-t border-zinc-800/80 flex flex-wrap items-center gap-2 font-mono text-[11px]">
             <span className="text-zinc-500 uppercase tracking-wider flex items-center gap-1 mr-1">
-              <Clock className="w-3 h-3" /> Runs:
+              <Clock className="w-3 h-3" /> Saved Predictions:
             </span>
             {history.slice(0, 6).map((run) => {
               const isSelected = activeRun?.id === run.id;
@@ -670,10 +670,10 @@ export function PredictionLab({ fileId, columns }: PredictionLabProps) {
             <div className="flex items-center justify-between">
               <h4 className="text-xs font-mono uppercase tracking-wider text-zinc-300 flex items-center gap-2">
                 <Trophy className="w-4 h-4 text-amber-400" />
-                Model Benchmark Leaderboard
+                AI Model Comparison (Best Model Highlighted)
               </h4>
               <span className="text-[11px] font-mono text-zinc-400">
-                Primary Metric: <span className="text-emerald-400">{testMetric}</span>
+                Accuracy Metric: <span className="text-emerald-400">{testMetric}</span>
               </span>
             </div>
 
@@ -682,10 +682,10 @@ export function PredictionLab({ fileId, columns }: PredictionLabProps) {
                 <thead>
                   <tr className="border-b border-zinc-800 text-zinc-500">
                     <th className="py-2 px-3">Rank</th>
-                    <th className="py-2 px-3">Model Architecture</th>
-                    <th className="py-2 px-3">CV Score</th>
-                    <th className="py-2 px-3">Std Dev</th>
-                    <th className="py-2 px-3">Time</th>
+                    <th className="py-2 px-3">AI Model</th>
+                    <th className="py-2 px-3">Score</th>
+                    <th className="py-2 px-3">Variation</th>
+                    <th className="py-2 px-3">Speed</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-800/60">
@@ -736,7 +736,7 @@ export function PredictionLab({ fileId, columns }: PredictionLabProps) {
           <div className="lg:col-span-5 rounded-xl border border-zinc-800 bg-zinc-950/70 p-5 space-y-4">
             <h4 className="text-xs font-mono uppercase tracking-wider text-zinc-300 flex items-center gap-2">
               <BarChart2 className="w-4 h-4 text-cyan-400" />
-              Feature Importance Weights
+              Top Factors Driving This Prediction (Why It Happens)
             </h4>
 
             <div className="space-y-3 font-mono">
@@ -828,7 +828,7 @@ export function PredictionLab({ fileId, columns }: PredictionLabProps) {
                 Interactive &quot;What-If&quot; Outcome Simulator
               </h4>
               <p className="text-[11px] font-mono text-zinc-400 mt-0.5">
-                Adjust top weighted drivers below to simulate live predictions and factor attribution
+                Adjust the sliders and dropdowns below to see how changing these top factors changes the predicted outcome in real time.
               </p>
             </div>
 
@@ -1036,9 +1036,9 @@ export function PredictionLab({ fileId, columns }: PredictionLabProps) {
         </div>
       )}
 
-      {/* Embedded Predictive Outcome & Driver Impact Plotly Studio */}
+      {/* Embedded Prediction Outcome & Factor Impact Chart Studio */}
       <EmbeddedPlotlyStudio
-        title="Predictive Outcome & Top Driver Impact Studio (2D Vector & 3D WebGL)"
+        title="How Top Factors Affect This Prediction (2D & 3D Charts)"
         columns={columns}
         chartType={driverChartType}
         xCol={driverXCol}
@@ -1047,8 +1047,8 @@ export function PredictionLab({ fileId, columns }: PredictionLabProps) {
         chartSpec={driverChartSpec}
         isLoading={isDriverChartLoading}
         error={driverChartError}
-        xLabel="Driver Feature (X)"
-        yLabel="Target Outcome (Y)"
+        xLabel="Factor Column (Horizontal Axis)"
+        yLabel="Predicted Target (Vertical Axis)"
         onChangeChartType={setDriverChartType}
         onChangeXCol={setDriverXCol}
         onChangeYCol={setDriverYCol}

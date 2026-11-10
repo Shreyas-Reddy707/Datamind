@@ -27,15 +27,15 @@ export function QualityGauge3D({
   if (clampedScore !== null) {
     if (clampedScore < 50) {
       color = "#F43F5E"; // Rose
-      label = "Needs Cleansing";
+      label = "Needs Cleanup";
       statusBadgeBg = "bg-rose-500/10 text-rose-400 border-rose-500/20";
     } else if (clampedScore < 80) {
       color = "#F59E0B"; // Amber
-      label = "Adequate Quality";
+      label = "Good Quality";
       statusBadgeBg = "bg-amber-500/10 text-amber-400 border-amber-500/20";
     } else {
       color = "#10B981"; // Emerald
-      label = "Production Grade";
+      label = "Great Quality";
       statusBadgeBg = "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
     }
   }
@@ -96,7 +96,10 @@ export function QualityGauge3D({
         >
           {label}
         </span>
-        <p className="text-xs text-zinc-400 mt-1">Dataset Health &amp; Integrity</p>
+        <p className="text-xs text-zinc-400 mt-1">Data Quality Score</p>
+        <p className="text-[11px] text-zinc-500 mt-0.5 max-w-[220px]">
+          Measures completeness, missing values, and duplicate rows
+        </p>
       </div>
 
       {/* Sub-metrics Breakdown */}
@@ -112,7 +115,7 @@ export function QualityGauge3D({
           </div>
           <div>
             <span className="text-[10px] text-zinc-500 uppercase tracking-wider block">
-              Cols
+              Columns
             </span>
             <span className="text-xs font-semibold text-zinc-200">
               {colCount ?? "—"}
@@ -120,7 +123,7 @@ export function QualityGauge3D({
           </div>
           <div>
             <span className="text-[10px] text-zinc-500 uppercase tracking-wider block">
-              Nulls
+              Empty
             </span>
             <span className="text-xs font-semibold text-zinc-200">
               {nullPct !== undefined && nullPct !== null ? `${safeFixed(nullPct, 1)}%` : "—"}

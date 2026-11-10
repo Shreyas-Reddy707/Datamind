@@ -118,8 +118,8 @@ export function LeftPanel({ overview, fileId }: LeftPanelProps) {
           <ArrowLeft className="w-3.5 h-3.5" />
           <span>Dashboard</span>
         </Link>
-        <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-400">
-          RAM CACHED
+        <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+          Ready
         </span>
       </div>
 
@@ -128,11 +128,11 @@ export function LeftPanel({ overview, fileId }: LeftPanelProps) {
         <div className="flex items-center justify-between">
           <label className="text-[10px] font-mono uppercase text-zinc-400 font-semibold flex items-center gap-1.5">
             <Database className="w-3 h-3 text-emerald-400" />
-            Switch Dataset
+            Active File
           </label>
           <label className="cursor-pointer inline-flex items-center gap-1 text-[10px] font-mono text-emerald-400 hover:text-emerald-300 transition-colors">
             <Upload className="w-3 h-3" />
-            <span>{isUploadingNew ? "Uploading..." : "+ Upload"}</span>
+            <span>{isUploadingNew ? "Uploading..." : "+ Upload New File"}</span>
             <input
               type="file"
               accept=".csv,.xlsx,.xls,.parquet"
@@ -220,7 +220,7 @@ export function LeftPanel({ overview, fileId }: LeftPanelProps) {
           >
             <span className="flex items-center gap-2">
               <Columns className="w-3.5 h-3.5 text-emerald-400" />
-              Column Schema ({Object.keys(columns).length})
+              Columns &amp; Fields ({Object.keys(columns).length})
             </span>
             {isSchemaOpen ? (
               <ChevronDown className="w-3.5 h-3.5 text-zinc-500" />
@@ -263,11 +263,11 @@ export function LeftPanel({ overview, fileId }: LeftPanelProps) {
                     <div className="flex items-center gap-1.5 shrink-0">
                       {profile && Number(profile.null_percentage ?? 0) > 0 && (
                         <span className="text-[10px] font-mono text-rose-400 bg-rose-500/10 px-1 rounded">
-                          {safeFixed(profile.null_percentage, 0)}% null
+                          {safeFixed(profile.null_percentage, 0)}% Empty
                         </span>
                       )}
-                      <span className="text-[9px] font-mono text-zinc-500 uppercase">
-                        {typeStr.split("(")[0]}
+                      <span className="text-[9px] font-mono text-zinc-500">
+                        {isNumeric ? "Number" : isDate ? "Date" : "Text"}
                       </span>
                     </div>
                   </div>
@@ -277,7 +277,7 @@ export function LeftPanel({ overview, fileId }: LeftPanelProps) {
           )}
         </div>
 
-        {/* Section 2: Multi-File Relational Joins */}
+        {/* Section 2: Combine Multiple Files */}
         <div>
           <button
             onClick={() => setIsJoinsOpen(!isJoinsOpen)}
@@ -285,7 +285,7 @@ export function LeftPanel({ overview, fileId }: LeftPanelProps) {
           >
             <span className="flex items-center gap-2">
               <Link2 className="w-3.5 h-3.5 text-cyan-400" />
-              Multi-File SQL Joins ({selectedJoinFileIds.length})
+              Combine Multiple Files ({selectedJoinFileIds.length})
             </span>
             {isJoinsOpen ? (
               <ChevronDown className="w-3.5 h-3.5 text-zinc-500" />
@@ -297,11 +297,11 @@ export function LeftPanel({ overview, fileId }: LeftPanelProps) {
           {isJoinsOpen && (
             <div className="px-3 pb-3 space-y-1.5">
               <p className="text-[11px] text-zinc-500 font-mono px-1">
-                Select datasets to mount into the DuckDB query sandbox for relational joins:
+                Select another uploaded file to combine and compare data together in Smart Tables.
               </p>
               {workspaceFiles.length === 0 ? (
                 <div className="text-[11px] text-zinc-600 font-mono p-2">
-                  No other datasets uploaded.
+                  No other files uploaded yet.
                 </div>
               ) : (
                 workspaceFiles.map((wf) => {
@@ -332,7 +332,7 @@ export function LeftPanel({ overview, fileId }: LeftPanelProps) {
           )}
         </div>
 
-        {/* Section 3: Episodic Memory */}
+        {/* Section 3: Saved Insights & Patterns */}
         <div>
           <button
             onClick={() => setIsMemoriesOpen(!isMemoriesOpen)}
@@ -340,7 +340,7 @@ export function LeftPanel({ overview, fileId }: LeftPanelProps) {
           >
             <span className="flex items-center gap-2">
               <Brain className="w-3.5 h-3.5 text-emerald-400" />
-              Episodic Memory ({memories.length})
+              Saved Insights &amp; Patterns ({memories.length})
             </span>
             {isMemoriesOpen ? (
               <ChevronDown className="w-3.5 h-3.5 text-zinc-500" />
@@ -352,7 +352,7 @@ export function LeftPanel({ overview, fileId }: LeftPanelProps) {
           {isMemoriesOpen && (
             <div className="px-3 pb-3 space-y-2">
               <p className="text-[11px] text-zinc-500 font-mono px-1">
-                Recalled findings from pgvector semantic memory:
+                Key patterns DataMind automatically discovered and remembered from this file.
               </p>
               {memories.length === 0 ? (
                 <div className="text-[11px] text-zinc-600 font-mono p-2">

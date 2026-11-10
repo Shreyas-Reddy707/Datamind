@@ -75,10 +75,10 @@ export default function WorkspaceIdePage() {
         </div>
         <div className="text-center">
           <p className="text-sm font-semibold text-zinc-200">
-            Mounting Parquet Slice into DuckDB Memory...
+            Preparing Your Interactive Data Workspace...
           </p>
           <p className="text-xs font-mono text-zinc-500 mt-1">
-            Setting memory limit: 512MB // Threads: 2 // Read-only isolated
+            Loading columns, quality checks, and instant insights
           </p>
         </div>
       </div>

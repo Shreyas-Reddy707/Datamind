@@ -10,19 +10,19 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "https://datamind.ai"),
   title: {
-    default: "DataMind v2 — Multi-Agent Tabular Intelligence & AutoML",
+    default: "DataMind v2 — No-Code Data Insights, 3D Charts & Predictions",
     template: "%s | DataMind v2",
   },
   description:
-    "High-performance analytical workspace powered by DuckDB, Apache Parquet, and a 3-tier multi-agent cognitive brain. Sub-millisecond queries and zero-config machine learning.",
+    "Upload CSV, Excel, JSON, or Parquet spreadsheets and explore plain-English insights, interactive 2D/3D charts, What-If predictions, and no-code smart pivot tables privately.",
   keywords: [
     "DataMind",
-    "DuckDB",
+    "No-Code Analytics",
+    "Data Insights",
+    "What-If Simulator",
+    "Smart Pivot Tables",
     "AutoML",
-    "Data Intelligence",
-    "Tabular Analytics",
-    "Multi-Agent",
-    "FastAPI",
+    "DuckDB",
     "Next.js 15",
   ],
   authors: [{ name: "DataMind Team" }],
@@ -31,16 +31,16 @@ export const metadata: Metadata = {
     type: "website",
     locale: "en_US",
     url: "https://datamind.ai",
-    title: "DataMind v2 — Multi-Agent Tabular Intelligence & AutoML",
+    title: "DataMind v2 — No-Code Data Insights, 3D Charts & Predictions",
     description:
-      "Vectorized Parquet analysis, forensic diagnostics, and multi-agent machine learning in one unified workspace.",
+      "Key insights, interactive 2D/3D charts, What-If predictions, and no-code smart tables in one private workspace.",
     siteName: "DataMind",
   },
   twitter: {
     card: "summary_large_image",
-    title: "DataMind v2 — Multi-Agent Tabular Intelligence",
+    title: "DataMind v2 — No-Code Data Insights & Predictions",
     description:
-      "Vectorized Parquet analysis, forensic diagnostics, and multi-agent machine learning in one unified workspace.",
+      "Turn spreadsheets into plain-English insights, 3D charts, and What-If predictions without writing code.",
   },
   robots: {
     index: true,
@@ -67,7 +67,7 @@ export default function RootLayout({
     operatingSystem: "All",
     applicationCategory: "BusinessApplication",
     description:
-      "Autonomous tabular data intelligence, vectorized DuckDB analytics, and multi-agent AutoML workspace.",
+      "Private no-code workspace for plain-English data insights, interactive 2D/3D charts, What-If predictions, and smart pivot tables.",
     offers: {
       "@type": "Offer",
       price: "0",
@@ -75,11 +75,11 @@ export default function RootLayout({
     },
     softwareVersion: "2.0.0",
     featureList: [
-      "DuckDB in-process vectorized analytical SQL engine",
-      "Sub-millisecond Apache Parquet data lake ingestion",
-      "3-Tier bounded multi-agent reasoning with LangGraph",
-      "Automated stratified machine learning benchmarking",
-      "Self-learning episodic memory with pgvector embeddings",
+      "Overview & Data Explorer with Data Quality Score",
+      "Key Insights & Interactive 2D/3D Plotly Chart Studio",
+      "Predict & Simulate What-If Outcome Engine",
+      "No-Code Smart Tables & Multi-File Visual Combiner",
+      "Verified DataMind AI Assistant (Online Ollama + Offline DuckDB Mode)",
     ],
   };
 

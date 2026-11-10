@@ -237,8 +237,8 @@ async def analyst_agent_node(state: AgentState) -> dict[str, Any]:
                 lines.append(
                     f"- **`{col}`**: {st.get('distinct_count', 'N/A')} distinct categories, null%={st.get('null_percentage', 0)}%"
                 )
-        brief = f"Analyzed {len(targets)} key dimension(s): {', '.join(f'`{c}`' for c in targets[:3])} across {profile.get('total_rows', 0):,} rows."
-        detailed = "## Empirical Schema Summary\n\n" + "\n".join(lines)
+        brief = f"Analyzed {len(targets)} key column(s): {', '.join(f'`{c}`' for c in targets[:3])} across {profile.get('total_rows', 0):,} rows."
+        detailed = "## Summary of Columns\n\n" + "\n".join(lines)
     else:
         brief, detailed = _split_brief_detailed(content)
 
@@ -342,7 +342,7 @@ async def predict_agent_node(state: AgentState) -> dict[str, Any]:
     detailed = (
         f"## Automated ML Mission Readiness\n\n"
         f"- **Detected Task**: `{task_type.capitalize()}`\n"
-        f"- **Target Dimension**: `{diag['suggested_target']}`\n"
+        f"- **Target Column**: `{diag['suggested_target']}`\n"
         f"- **Sample Readiness**: {len(df):,} observations\n"
         f"- **Diagnostics**: Zero critical blockers identified."
     )

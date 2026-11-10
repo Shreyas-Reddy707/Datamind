@@ -3,15 +3,22 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
+import { api } from "@/lib/api";
+import { ChatEngineStatus } from "@/lib/types";
 
 export default function SettingsPage() {
   const [enable3D, setEnable3D] = useState(true);
+  const [aiStatus, setAiStatus] = useState<ChatEngineStatus | null>(null);
 
   useEffect(() => {
     const saved = localStorage.getItem("datamind_enable_3d");
     if (saved !== null) {
       setEnable3D(saved === "true");
     }
+    api.chat
+      .status()
+      .then((res) => setAiStatus(res))
+      .catch(() => setAiStatus(null));
   }, []);
 
   const handleToggle3D = (checked: boolean) => {
@@ -29,9 +36,9 @@ export default function SettingsPage() {
       </Link>
 
       <div className="space-y-1">
-        <h1 className="text-2xl font-bold tracking-tight text-white">Engine Settings</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-white">Workspace Preferences</h1>
         <p className="text-xs font-mono text-zinc-400">
-          DuckDB Vector Configuration &amp; Telemetry Limits
+          Visual experience, local AI assistant status, and high-speed data processing
         </p>
       </div>
 
@@ -39,38 +46,46 @@ export default function SettingsPage() {
         <div className="flex items-center justify-between pb-4 border-b border-zinc-800">
           <div>
             <span className="text-sm font-semibold text-white block">
-              In-Memory Cache Ceiling
+              High-Speed Data Engine
             </span>
             <span className="text-zinc-500 text-[11px]">
-              Allocated RAM per active DuckDB analytical worker (Server Configured)
+              Powers instant filtering, smart tables, and chart generation across large files
             </span>
           </div>
           <span className="px-2.5 py-1 rounded bg-zinc-900 border border-zinc-800 text-emerald-400 font-semibold">
-            512MB
+            Ready (Fast Mode)
           </span>
         </div>
 
         <div className="flex items-center justify-between pb-4 border-b border-zinc-800">
           <div>
             <span className="text-sm font-semibold text-white block">
-              Execution Threads
+              Local AI Status
             </span>
             <span className="text-zinc-500 text-[11px]">
-              Worker thread concurrency for Parquet scans (Server Configured)
+              {aiStatus?.online
+                ? `Connected to private local AI (${aiStatus.model})`
+                : "Running instant built-in data engine (start Ollama anytime for open-ended Q&A)"}
             </span>
           </div>
-          <span className="px-2.5 py-1 rounded bg-zinc-900 border border-zinc-800 text-cyan-400 font-semibold">
-            2 Threads
+          <span
+            className={`px-2.5 py-1 rounded bg-zinc-900 border font-semibold ${
+              aiStatus?.online
+                ? "border-emerald-500/30 text-emerald-400"
+                : "border-amber-500/30 text-amber-300"
+            }`}
+          >
+            {aiStatus ? (aiStatus.online ? "Local AI Online" : "Built-In Fast Engine") : "Checking..."}
           </span>
         </div>
 
         <div className="flex items-center justify-between">
           <label htmlFor="settings-webgl" className="cursor-pointer">
             <span className="text-sm font-semibold text-white block">
-              Hardware WebGL Acceleration
+              3D Visual Effects &amp; Smooth Animations
             </span>
             <span className="text-zinc-500 text-[11px]">
-              Enable interactive 3D WebGL point cloud rendering in Plotly
+              Enable interactive 3D charts and depth animations across your workspace
             </span>
           </label>
           <input

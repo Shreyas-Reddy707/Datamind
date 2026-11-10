@@ -22,6 +22,7 @@ import {
   Activity,
   ChevronDown,
   ChevronRight,
+  SlidersHorizontal,
 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { safeLocale } from "@/lib/format";
@@ -270,11 +271,11 @@ export default function DashboardPage() {
               <div>
                 <p className="text-sm font-semibold text-zinc-200">
                   {isUploading
-                    ? "Converting & Sandboxing Dataset into Parquet Lake..."
-                    : "Drop tabular file here, or click to browse"}
+                    ? "Preparing your dataset for instant analysis..."
+                    : "Drop your spreadsheet or data file here, or click to browse"}
                 </p>
                 <p className="text-xs font-mono text-zinc-500 mt-1">
-                  SUPPORTS CSV, EXCEL (.xlsx), PARQUET // 50MB CAP // READ-ONLY ISOLATED
+                  Upload any CSV, Excel (.xlsx), JSON, or Parquet file (up to 50 MB)
                 </p>
               </div>
             </div>
@@ -300,13 +301,13 @@ export default function DashboardPage() {
             <div>
               <h2 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
                 <Folder className="w-5 h-5 text-emerald-400" />
-                Forensic Dataset Folders
+                Your Dataset Library
                 <span className="text-xs font-mono px-2 py-0.5 rounded-full bg-zinc-900 border border-zinc-800 text-zinc-400">
                   {datasets.length} Total
                 </span>
               </h2>
               <p className="text-xs text-zinc-400 font-mono mt-0.5">
-                Domain-clustered Parquet lakes with direct workspace deep-links
+                Click any dataset below to explore insights, build charts, or predict outcomes
               </p>
             </div>
 
@@ -411,7 +412,7 @@ export default function DashboardPage() {
                                     {gf.original_format}
                                   </span>
                                   <span className="text-[10px] font-mono px-2 py-0.5 rounded border border-emerald-500/20 bg-emerald-500/10 text-emerald-400">
-                                    SHA-256 DEDUP
+                                    Smart Storage Saved
                                   </span>
                                 </div>
 
@@ -439,36 +440,36 @@ export default function DashboardPage() {
                               {/* 4 Direct-Launch Action Buttons */}
                               <div className="mt-4 pt-2 space-y-1.5">
                                 <span className="text-[10px] font-mono uppercase tracking-wider text-zinc-500 block">
-                                  Direct Workspace Launchers
+                                  Jump Straight Into
                                 </span>
                                 <div className="grid grid-cols-2 gap-1.5 font-mono text-[11px]">
                                   <Link
-                                    href={`/workspace/${dataset.id}?tab=forensic`}
-                                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 hover:border-amber-500/50 hover:bg-amber-500/10 text-zinc-300 hover:text-amber-300 transition-colors"
+                                    href={`/workspace/${dataset.id}?tab=overview`}
+                                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 hover:border-zinc-500/50 hover:bg-zinc-800/70 text-zinc-300 hover:text-white transition-colors"
                                   >
-                                    <ShieldAlert className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                                    <span className="truncate">Forensics</span>
+                                    <span>📋</span>
+                                    <span className="truncate">Overview &amp; Data</span>
                                   </Link>
                                   <Link
                                     href={`/workspace/${dataset.id}?tab=forensic`}
                                     className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 hover:border-emerald-500/50 hover:bg-emerald-500/10 text-zinc-300 hover:text-emerald-300 transition-colors"
                                   >
-                                    <BarChart3 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                                    <span className="truncate">Charts</span>
+                                    <span>💡</span>
+                                    <span className="truncate">Insights &amp; Charts</span>
                                   </Link>
                                   <Link
                                     href={`/workspace/${dataset.id}?tab=predict`}
                                     className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 hover:border-cyan-500/50 hover:bg-cyan-500/10 text-zinc-300 hover:text-cyan-300 transition-colors"
                                   >
-                                    <Activity className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                                    <span className="truncate">AutoML</span>
+                                    <span>🎯</span>
+                                    <span className="truncate">Predict &amp; Simulate</span>
                                   </Link>
                                   <Link
-                                    href={`/workspace/${dataset.id}?tab=overview`}
-                                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 hover:border-purple-500/50 hover:bg-purple-500/10 text-zinc-300 hover:text-purple-300 transition-colors"
+                                    href={`/workspace/${dataset.id}?tab=sql`}
+                                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 hover:border-amber-500/50 hover:bg-amber-500/10 text-zinc-300 hover:text-amber-300 transition-colors"
                                   >
-                                    <Database className="w-3.5 h-3.5 text-purple-400 shrink-0" />
-                                    <span className="truncate">Explorer</span>
+                                    <span>🔢</span>
+                                    <span className="truncate">Smart Tables</span>
                                   </Link>
                                 </div>
 

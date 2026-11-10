@@ -43,6 +43,8 @@
   - [x] Build 3-Pane IDE (`/workspace/[fileId]`): `LeftPanel` (file controls + multi-file join selector), `CenterLab` (Overview/Cleaning, Forensic Cards, Plotly.js Canvas, Prediction Leaderboard, PDF Export), and `RightChat` (SSE stream + 1-click **"Inject to Lab"**).
   - [x] **Gate 4**: Run `npm run typecheck` (0 errors), `npm run build` (13/13 static/dynamic routes compiled cleanly), and verified backend pytest suite (20 passed).
 
-- [ ] **Phase 5: Final Pre-Commit Security Scan & CodeRabbit PR Gate**
-  - [ ] Run `ruff`, `pyright`, `bandit`, and `gitleaks`.
-  - [ ] Remove `_legacy_v1/` once 100% parity is verified, review inline diffs in GitLens, and open PR for CodeRabbit review.
+- [x] **Phase 5: Plain-English Polish, `_legacy_v1` Removal & Final Verification**
+  - [x] Synchronize plain-English UX copy across landing page, SEO docs (`llms.txt`, `layout.tsx`), auth pages, dashboard, sidebar, 4 workspace tabs, and AI Assistant chat drawer.
+  - [x] Replace raw SQL sandbox with no-code **Smart Tables & Pivot** (`SmartPivotStudio`) supporting plain-English queries, 1-click presets, visual group/filter/metric builder, multi-file visual join, CSV export, and 1-click chart conversion.
+  - [x] Run `ruff`, `pytest`, `npm run typecheck`, `npm run build`, and Playwright end-to-end verification.
+  - [x] Remove `_legacy_v1/` archive and update `README.md` for DataMind v2.

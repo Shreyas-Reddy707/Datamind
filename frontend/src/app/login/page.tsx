@@ -74,9 +74,9 @@ export default function LoginPage() {
               DataMind<span className="text-emerald-400">.v2</span>
             </span>
           </Link>
-          <h1 className="text-xl font-semibold text-zinc-100">Sign in to workspace</h1>
+          <h1 className="text-xl font-semibold text-zinc-100">Welcome back</h1>
           <p className="text-xs text-zinc-400 mt-1 font-mono">
-            SECURE ANALYTICAL ACCESS // OWASP HARDENED
+            Private, Secure Data Workspace
           </p>
         </div>
 
@@ -105,7 +105,7 @@ export default function LoginPage() {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="analyst@enterprise.com"
+                  placeholder="you@company.com"
                   className="w-full pl-10 pr-4 py-2.5 bg-zinc-900/90 border border-zinc-800 rounded-lg text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors font-mono"
                 />
               </div>
@@ -137,9 +137,9 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={isLoading || isGuestLoading}
-              className="w-full py-2.5 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-black font-semibold text-sm rounded-lg transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2"
+              className="w-full py-2.5 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-black font-semibold text-sm rounded-lg transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 cursor-pointer"
             >
-              {isLoading ? "Authenticating..." : "Sign In"}
+              {isLoading ? "Signing In..." : "Sign In"}
               <ArrowRight className="w-4 h-4" />
             </button>
           </form>
@@ -159,21 +159,21 @@ export default function LoginPage() {
             type="button"
             onClick={handleGuest}
             disabled={isLoading || isGuestLoading}
-            className="w-full py-2.5 bg-zinc-900 hover:bg-zinc-800 disabled:opacity-50 text-zinc-200 border border-zinc-800 rounded-lg text-sm transition-colors flex items-center justify-center gap-2 font-mono"
+            className="w-full py-2.5 bg-zinc-900 hover:bg-zinc-800 disabled:opacity-50 text-zinc-200 border border-zinc-800 rounded-lg text-sm transition-colors flex items-center justify-center gap-2 font-mono cursor-pointer"
           >
             <Bot className="w-4 h-4 text-emerald-400" />
-            {isGuestLoading ? "Provisioning Guest Session..." : "Continue as Guest"}
+            {isGuestLoading ? "Opening Demo Workspace..." : "Try Instant Guest Demo"}
           </button>
         </div>
 
         {/* Footer Link */}
         <p className="text-center text-xs text-zinc-500 mt-6">
-          Don&apos;t have an account?{" "}
+          New to DataMind?{" "}
           <Link
             href="/register"
             className="text-emerald-400 hover:underline font-mono"
           >
-            Create Workspace Account
+            Create Free Account
           </Link>
         </p>
       </div>

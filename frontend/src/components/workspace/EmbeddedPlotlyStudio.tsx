@@ -34,8 +34,8 @@ export function EmbeddedPlotlyStudio({
   chartSpec,
   isLoading,
   error,
-  xLabel = "X Axis Column",
-  yLabel = "Y Axis Column",
+  xLabel = "Horizontal Axis (Group / Category)",
+  yLabel = "Vertical Axis (Value to Measure)",
   onChangeChartType,
   onChangeXCol,
   onChangeYCol,
@@ -62,14 +62,14 @@ export function EmbeddedPlotlyStudio({
             ) : (
               <Play className="w-3.5 h-3.5 fill-black" />
             )}
-            <span>Generate Chart</span>
+            <span>Update Chart</span>
           </button>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 pt-3 border-t border-zinc-800/80 font-mono text-xs">
           <div>
             <label className="block text-[10px] text-zinc-400 uppercase mb-1">
-              Chart Type
+              Chart Style
             </label>
             <select
               value={chartType}
@@ -125,7 +125,7 @@ export function EmbeddedPlotlyStudio({
 
           <div>
             <label className="block text-[10px] text-zinc-400 uppercase mb-1">
-              Color Hue Group
+              Color Grouping (Optional)
             </label>
             <select
               value={colorCol}
