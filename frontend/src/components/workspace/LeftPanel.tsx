@@ -20,6 +20,7 @@ import {
   Upload,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { safeFixed, safeLocale } from "@/lib/format";
 import { AnalysisMemory, LabOverviewResponse, UserFile } from "@/lib/types";
 import { useWorkspaceStore } from "@/store/useWorkspaceStore";
 
@@ -136,12 +137,12 @@ export function LeftPanel({ overview, fileId }: LeftPanelProps) {
         >
           {allFiles.map((f) => (
             <option key={f.id} value={f.id}>
-              {f.display_name} ({f.global_file?.row_count?.toLocaleString() || 0} rows)
+              {f.display_name} ({safeLocale(f.global_file?.row_count, "0")} rows)
             </option>
           ))}
           {allFiles.every((f) => f.id !== fileId) && overview && (
             <option value={fileId}>
-              {overview.filename} ({overview.row_count?.toLocaleString() || 0} rows)
+              {overview.filename} ({safeLocale(overview.row_count, "0")} rows)
             </option>
           )}
         </select>
@@ -157,7 +158,7 @@ export function LeftPanel({ overview, fileId }: LeftPanelProps) {
           {overview?.filename || "Loading schema..."}
         </h2>
         <div className="flex items-center gap-3 text-[11px] font-mono text-zinc-400">
-          <span>{overview?.row_count?.toLocaleString() ?? 0} Rows</span>
+          <span>{safeLocale(overview?.row_count, "0")} Rows</span>
           <span>•</span>
           <span>{overview?.column_count ?? 0} Columns</span>
         </div>
@@ -214,9 +215,9 @@ export function LeftPanel({ overview, fileId }: LeftPanelProps) {
                     </div>
 
                     <div className="flex items-center gap-1.5 shrink-0">
-                      {profile && profile.null_percentage > 0 && (
+                      {profile && Number(profile.null_percentage ?? 0) > 0 && (
                         <span className="text-[10px] font-mono text-rose-400 bg-rose-500/10 px-1 rounded">
-                          {profile.null_percentage.toFixed(0)}% null
+                          {safeFixed(profile.null_percentage, 0)}% null
                         </span>
                       )}
                       <span className="text-[9px] font-mono text-zinc-500 uppercase">

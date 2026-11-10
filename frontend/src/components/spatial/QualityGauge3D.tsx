@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { safeFixed, safeLocale } from "@/lib/format";
 
 interface QualityGauge3DProps {
   score?: number | null; // 0 to 100, or null/undefined if unavailable
@@ -106,7 +107,7 @@ export function QualityGauge3D({
               Rows
             </span>
             <span className="text-xs font-semibold text-zinc-200">
-              {rowCount?.toLocaleString() ?? "—"}
+              {safeLocale(rowCount, "—")}
             </span>
           </div>
           <div>
@@ -122,7 +123,7 @@ export function QualityGauge3D({
               Nulls
             </span>
             <span className="text-xs font-semibold text-zinc-200">
-              {nullPct !== undefined && nullPct !== null ? `${nullPct.toFixed(1)}%` : "—"}
+              {nullPct !== undefined && nullPct !== null ? `${safeFixed(nullPct, 1)}%` : "—"}
             </span>
           </div>
         </div>

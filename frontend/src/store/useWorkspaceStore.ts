@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { ChatMessage, User, UserFile } from "@/lib/types";
 
-export type LabTab = "overview" | "forensic" | "viz" | "predict" | "sql";
+export type LabTab = "overview" | "forensic" | "predict" | "sql";
 
 export interface WorkspaceState {
   user: User | null;
@@ -76,9 +76,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
       injectedArtifact,
       isChatOpen: false,
       activeLabTab:
-        injectedArtifact.type === "chart"
-          ? "viz"
-          : injectedArtifact.type === "forensic"
+        injectedArtifact.type === "chart" || injectedArtifact.type === "forensic"
           ? "forensic"
           : injectedArtifact.type === "prediction"
           ? "predict"

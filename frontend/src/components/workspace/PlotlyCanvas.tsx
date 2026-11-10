@@ -35,18 +35,13 @@ export function PlotlyCanvas({ spec, title }: PlotlyCanvasProps) {
 
   // Normalize spec payload (handles { plotly_spec: { data, layout } } or { data, layout })
   const actualSpec = (spec as any)?.plotly_spec || spec;
-
-  if (!actualSpec || !actualSpec.data || !Array.isArray(actualSpec.data) || actualSpec.data.length === 0) {
-    return (
-      <div className="w-full h-full min-h-[460px] flex items-center justify-center text-xs font-mono text-zinc-500 bg-zinc-950/60 rounded-xl border border-zinc-800">
-        No chart specification available. Select variables and generate a visualization.
-      </div>
-    );
-  }
+  const hasValidData = Boolean(
+    actualSpec && actualSpec.data && Array.isArray(actualSpec.data) && actualSpec.data.length > 0
+  );
 
   // 3D eligibility check: every trace must be scatter-like and have x and y data
   const isEligibleFor3D =
-    actualSpec.data.length > 0 &&
+    hasValidData &&
     actualSpec.data.every(
       (trace: any) =>
         (!trace.type || trace.type === "scatter" || trace.type === "scatter3d") &&
@@ -61,6 +56,14 @@ export function PlotlyCanvas({ spec, title }: PlotlyCanvasProps) {
       setIs3DMode(false);
     }
   }, [isEligibleFor3D, is3DMode]);
+
+  if (!hasValidData) {
+    return (
+      <div className="w-full h-full min-h-[460px] flex items-center justify-center text-xs font-mono text-zinc-500 bg-zinc-950/60 rounded-xl border border-zinc-800">
+        No chart specification available. Select variables and generate a visualization.
+      </div>
+    );
+  }
 
   const effective3D = is3DMode && isEligibleFor3D;
 

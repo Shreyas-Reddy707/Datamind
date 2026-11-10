@@ -25,6 +25,7 @@ from app.schemas.predict import (
     PredictDiagnoseRequest,
     PredictionHistoryResponse,
     PredictRunRequest,
+    PredictSimulateRequest,
 )
 from app.workers.tasks import run_ml_benchmark_task
 
@@ -193,4 +194,64 @@ async def list_prediction_history_endpoint(
     )
     jobs = await db.scalars(stmt)
     return list(jobs.all())
+
+
+@router.post("/{file_id}/simulate")
+async def simulate_prediction_outcome_endpoint(
+    file_id: uuid.UUID,
+    request: PredictSimulateRequest,
+    current_user: User = Depends(get_current_user),
+    user_file: UserFile = Depends(get_authorized_user_file),
+    db: AsyncSession = Depends(get_db),
+):
+    """Run interactive What-If outcome simulation grounded in top weighted dataset features."""
+    gf = user_file.global_file
+    df = await asyncio.to_thread(pd.read_parquet, gf.parquet_path)
+
+    # Locate matching completed PredictionHistory if available
+    pred_stmt = select(PredictionHistory).where(
+        PredictionHistory.user_file_id == user_file.id,
+        PredictionHistory.user_id == current_user.id,
+        PredictionHistory.status == "completed",
+    )
+    if request.prediction_id:
+        pred_stmt = pred_stmt.where(PredictionHistory.id == request.prediction_id)
+    elif request.target_col:
+        pred_stmt = pred_stmt.where(PredictionHistory.target_column == request.target_col)
+    pred_stmt = pred_stmt.order_by(PredictionHistory.created_at.desc()).limit(1)
+    pred_run = await db.scalar(pred_stmt)
+
+    target_col = (
+        request.target_col
+        or (pred_run.target_column if pred_run else None)
+    )
+    if not target_col or target_col not in df.columns:
+        diag = await asyncio.to_thread(UniversalMLRunner.diagnose_data, df, None)
+        target_col = diag.get("suggested_target") or df.columns[-1]
+
+    task_type = (
+        pred_run.task_type
+        if pred_run and pred_run.target_column == target_col
+        else await asyncio.to_thread(UniversalMLRunner.auto_select_task, df, target_col)
+    )
+    if task_type not in ("classification", "regression"):
+        task_type = await asyncio.to_thread(UniversalMLRunner.auto_select_task, df, target_col)
+
+    fi = pred_run.feature_importance_json if pred_run and pred_run.target_column == target_col else None
+    best_model = pred_run.best_model_name if pred_run and pred_run.target_column == target_col else None
+
+    try:
+        res = await asyncio.to_thread(
+            UniversalMLRunner.simulate_outcome,
+            gf.parquet_path,
+            df,
+            target_col,
+            task_type,
+            fi,
+            request.inputs,
+            best_model,
+        )
+        return res
+    except ValueError as ve:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(ve)) from ve
 

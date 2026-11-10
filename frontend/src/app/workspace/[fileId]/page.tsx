@@ -15,9 +15,11 @@ function TabQuerySync() {
   const { setActiveLabTab } = useWorkspaceStore();
 
   useEffect(() => {
-    const tabParam = searchParams?.get("tab") as LabTab | null;
-    if (tabParam && ["overview", "forensic", "viz", "predict", "sql"].includes(tabParam)) {
-      setActiveLabTab(tabParam);
+    const rawTab = searchParams?.get("tab");
+    if (rawTab === "viz") {
+      setActiveLabTab("forensic");
+    } else if (rawTab && ["overview", "forensic", "predict", "sql"].includes(rawTab)) {
+      setActiveLabTab(rawTab as LabTab);
     }
   }, [searchParams, setActiveLabTab]);
 

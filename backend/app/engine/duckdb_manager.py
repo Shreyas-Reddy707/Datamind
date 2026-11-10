@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import time
 from typing import Any
 
 import duckdb
@@ -277,5 +278,73 @@ class DuckDBManager:
             capped_sql = f"SELECT * FROM ({join_sql}) LIMIT {limit}"  # noqa: S608
             rel = conn.sql(capped_sql)
             return rel.df().to_dict(orient="records")
+        finally:
+            conn.close()
+
+    @classmethod
+    def execute_sql_tabular(
+        cls,
+        parquet_path: str,
+        sql_query: str,
+        named_join_files: list[tuple[str, str]] | None = None,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        """Execute read-only SQL query returning {columns, rows, row_count, execution_time_ms}."""
+        clean_sql = sql_query.strip().rstrip(";").strip()
+        if not clean_sql:
+            raise ValueError("SQL query cannot be empty.")
+        cls._validate_sql_safety(clean_sql)
+        if not os.path.exists(parquet_path):
+            raise FileNotFoundError(f"Parquet file not found at: {parquet_path}")
+
+        t0 = time.perf_counter()
+        conn = duckdb.connect(database=":memory:", read_only=False)
+        try:
+            conn.execute("SET memory_limit = '512MB'; SET threads = 2;")
+            conn.execute(
+                "CREATE TABLE dataset AS SELECT * FROM read_parquet(?)",
+                [parquet_path.replace("\\", "/")],
+            )
+            if named_join_files:
+                for alias, path in named_join_files:
+                    if not os.path.exists(path):
+                        raise FileNotFoundError(f"Joined dataset '{alias}' not found.")
+                    clean_alias = re.sub(r"[^\w]", "_", alias)
+                    if clean_alias == "dataset":
+                        continue
+                    esc_alias = escape_identifier(clean_alias)
+                    conn.execute(
+                        f"CREATE TABLE {esc_alias} AS SELECT * FROM read_parquet(?)",  # noqa: S608
+                        [path.replace("\\", "/")],
+                    )
+
+            conn.execute("SET enable_external_access = false;")
+            capped_sql = f"SELECT * FROM ({clean_sql}) LIMIT {limit}"  # noqa: S608
+            rel = conn.sql(capped_sql)
+            columns = list(rel.columns)
+            df = rel.df()
+            df = df.replace({np.nan: None})
+
+            rows: list[list[Any]] = []
+            for row_vals in df.itertuples(index=False, name=None):
+                safe_row = []
+                for val in row_vals:
+                    if val is None:
+                        safe_row.append(None)
+                    elif hasattr(val, "isoformat"):
+                        safe_row.append(val.isoformat())
+                    elif hasattr(val, "item"):
+                        safe_row.append(val.item())
+                    else:
+                        safe_row.append(val)
+                rows.append(safe_row)
+
+            elapsed_ms = int((time.perf_counter() - t0) * 1000)
+            return {
+                "columns": columns,
+                "rows": rows,
+                "row_count": len(rows),
+                "execution_time_ms": elapsed_ms,
+            }
         finally:
             conn.close()

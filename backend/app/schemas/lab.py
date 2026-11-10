@@ -26,6 +26,13 @@ class LabVisualizeRequest(BaseModel):
     column: str | None = Field(default=None, max_length=128)
     x_col: str | None = Field(default=None, max_length=128)
     y_col: str | None = Field(default=None, max_length=128)
+    color_col: str | None = Field(default=None, max_length=128)
+
+
+class LabQueryRequest(BaseModel):
+    sql: str | None = Field(default=None, max_length=10000)
+    query: str | None = Field(default=None, max_length=10000)
+    join_file_ids: list[uuid.UUID] = Field(default_factory=list, max_length=5)
 
 
 class LabAnalyzeRequest(BaseModel):

@@ -16,12 +16,13 @@ import {
   Table as TableIcon,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { safeLocale } from "@/lib/format";
 import {
   LabChartType,
   LabOverviewResponse,
 } from "@/lib/types";
 import { QualityGauge3D } from "@/components/spatial/QualityGauge3D";
-import { PlotlyCanvas } from "./PlotlyCanvas";
+import { EmbeddedPlotlyStudio } from "./EmbeddedPlotlyStudio";
 import { PredictionLab } from "./PredictionLab";
 import { useWorkspaceStore, LabTab } from "@/store/useWorkspaceStore";
 
@@ -217,16 +218,25 @@ export function CenterLab({ overview, fileId }: CenterLabProps) {
     }
   };
 
-  const handleGenerateChart = async () => {
+  const handleGenerateChart = async (
+    overrideType?: LabChartType,
+    overrideX?: string,
+    overrideY?: string,
+    overrideColor?: string
+  ) => {
+    const ctype = overrideType ?? selectedChartType;
+    const xVal = overrideX !== undefined ? overrideX : xCol;
+    const yVal = overrideY !== undefined ? overrideY : yCol;
+    const colorVal = overrideColor !== undefined ? overrideColor : colorCol;
     try {
       setIsChartLoading(true);
       setChartError(null);
       const res = await api.lab.visualize(
         fileId,
-        selectedChartType,
-        xCol || undefined,
-        yCol || undefined,
-        colorCol || undefined
+        ctype,
+        xVal || undefined,
+        yVal || undefined,
+        colorVal || undefined
       );
       const specToSet = (res as any)?.plotly_spec || (res as any)?.spec || res;
       setChartSpec(specToSet);
@@ -236,6 +246,45 @@ export function CenterLab({ overview, fileId }: CenterLabProps) {
     } finally {
       setIsChartLoading(false);
     }
+  };
+
+  const extractFindingColumns = (finding: Record<string, unknown>): string[] => {
+    const text = `${String(finding.title || "")} ${String(finding.description || "")} ${String(finding.insight || "")}`.toLowerCase();
+    const matched = columns.filter((col) => {
+      const escaped = col.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      return new RegExp(`(^|[^a-z0-9_])${escaped}([^a-z0-9_]|$)`, "i").test(text);
+    });
+    return matched.slice(0, 3);
+  };
+
+  const handleInspectFindingEvidence = (finding: Record<string, unknown>, explicitCol?: string) => {
+    const matched = extractFindingColumns(finding);
+    const primary = explicitCol || matched[0];
+    const secondary = matched.find((c) => c !== primary) || "";
+    const numCols = overview?.profile?.numeric_columns || [];
+
+    let nextType: LabChartType = "distribution";
+    let nextX = primary || xCol;
+    let nextY = secondary;
+
+    if (primary && secondary) {
+      const pNum = numCols.includes(primary);
+      const sNum = numCols.includes(secondary);
+      nextType = pNum && sNum ? "scatter" : "bar";
+    } else if (primary) {
+      const pNum = numCols.includes(primary);
+      nextType = pNum ? "histogram" : "bar";
+      nextY = "";
+    } else if (numCols.length >= 2) {
+      nextType = "heatmap";
+      nextX = numCols[0];
+      nextY = numCols[1];
+    }
+
+    setSelectedChartType(nextType);
+    setXCol(nextX);
+    setYCol(nextY);
+    handleGenerateChart(nextType, nextX, nextY, "");
   };
 
   const handleExecuteSql = async () => {
@@ -259,11 +308,10 @@ export function CenterLab({ overview, fileId }: CenterLabProps) {
   };
 
   const tabs: Array<{ id: LabTab; label: string; icon: any }> = [
-    { id: "overview", label: "Overview & Health", icon: TableIcon },
-    { id: "forensic", label: "Forensic Diagnostics", icon: ShieldAlert },
-    { id: "viz", label: "Plotly Studio", icon: BarChart3 },
-    { id: "predict", label: "AutoML Lab", icon: Activity },
-    { id: "sql", label: "DuckDB SQL", icon: FileCode },
+    { id: "overview", label: "Overview & Data Explorer", icon: TableIcon },
+    { id: "forensic", label: "Forensic Analytics Lab", icon: ShieldAlert },
+    { id: "predict", label: "Predictive AutoML Lab", icon: Activity },
+    { id: "sql", label: "DuckDB SQL Sandbox", icon: FileCode },
   ];
 
   return (
@@ -404,7 +452,7 @@ export function CenterLab({ overview, fileId }: CenterLabProps) {
                   </h4>
                   {previewData?.total_rows !== undefined && (
                     <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-zinc-900 text-zinc-400 border border-zinc-800">
-                      {previewData.total_rows.toLocaleString()} Rows Total
+                      {safeLocale(previewData.total_rows, "0")} Rows Total
                     </span>
                   )}
                 </div>
@@ -492,17 +540,17 @@ export function CenterLab({ overview, fileId }: CenterLabProps) {
           </div>
         )}
 
-        {/* TAB 2: FORENSIC DIAGNOSTICS */}
+        {/* TAB 2: FORENSIC ANALYTICS LAB & EMBEDDED PLOTLY STUDIO */}
         {activeLabTab === "forensic" && (
           <div className="space-y-6">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-base font-bold text-white flex items-center gap-2">
                   <ShieldAlert className="w-5 h-5 text-rose-400" />
-                  Forensic Integrity &amp; Statistical Anomaly Scan
+                  Forensic Analytics &amp; Visual Evidence Lab
                 </h3>
                 <p className="text-xs text-zinc-400 font-mono mt-0.5">
-                  Benford&apos;s Law verification // Null pattern clusters // Outlier bounds
+                  Context &rarr; Finding &rarr; Evidence &rarr; Implication // Click any finding or column pill to render evidence
                 </p>
               </div>
 
@@ -526,25 +574,66 @@ export function CenterLab({ overview, fileId }: CenterLabProps) {
               <div className="space-y-6">
                 {/* Findings List */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {forensicReport.findings.map((finding, i) => (
-                    <div
-                      key={i}
-                      className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-4 space-y-2"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-mono font-bold text-amber-400 uppercase">
-                          {String(finding.title || finding.metric || "Diagnostic Finding")}
-                        </span>
-                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-zinc-900 text-zinc-400 border border-zinc-800">
-                          {String(finding.severity || "MEDIUM")}
-                        </span>
+                  {forensicReport.findings.map((finding, i) => {
+                    const matchedCols = extractFindingColumns(finding);
+                    return (
+                      <div
+                        key={i}
+                        onClick={() => handleInspectFindingEvidence(finding)}
+                        className="rounded-xl border border-zinc-800 hover:border-emerald-500/40 bg-zinc-950/70 p-4 space-y-2.5 cursor-pointer transition-all group"
+                        title="Click to plot supporting visual evidence in Plotly Studio below"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs font-mono font-bold text-amber-400 uppercase group-hover:text-emerald-400 transition-colors">
+                            {String(finding.title || finding.metric || "Diagnostic Finding")}
+                          </span>
+                          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-zinc-900 text-zinc-400 border border-zinc-800">
+                            {String(finding.severity || "MEDIUM")}
+                          </span>
+                        </div>
+                        <p className="text-xs text-zinc-300 leading-relaxed font-mono">
+                          {String(finding.description || finding.insight || JSON.stringify(finding))}
+                        </p>
+                        {matchedCols.length > 0 && (
+                          <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                            <span className="text-[10px] font-mono text-zinc-500">Visualize:</span>
+                            {matchedCols.map((col) => (
+                              <button
+                                key={col}
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleInspectFindingEvidence(finding, col);
+                                }}
+                                className="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors"
+                              >
+                                {col}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
-                      <p className="text-xs text-zinc-300 leading-relaxed font-mono">
-                        {String(finding.description || finding.insight || JSON.stringify(finding))}
-                      </p>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
+
+                {/* Embedded Interactive Analytical Plotly Studio */}
+                <EmbeddedPlotlyStudio
+                  title="Forensic Interactive Plotly Studio (2D Vector & 3D WebGL)"
+                  columns={columns}
+                  chartType={selectedChartType}
+                  xCol={xCol}
+                  yCol={yCol}
+                  colorCol={colorCol}
+                  chartSpec={chartSpec}
+                  isLoading={isChartLoading}
+                  error={chartError}
+                  onChangeChartType={setSelectedChartType}
+                  onChangeXCol={setXCol}
+                  onChangeYCol={setYCol}
+                  onChangeColorCol={setColorCol}
+                  onGenerate={() => handleGenerateChart()}
+                />
 
                 {/* Full Forensic Briefing Markdown / Text */}
                 {forensicReport.report && (
@@ -559,143 +648,37 @@ export function CenterLab({ overview, fileId }: CenterLabProps) {
                 )}
               </div>
             ) : (
-              <div className="p-12 text-center text-xs font-mono text-zinc-500">
-                Click &quot;Re-run Scan&quot; to execute forensic integrity checks.
+              <div className="space-y-6">
+                <div className="p-8 text-center text-xs font-mono text-zinc-500 rounded-xl border border-dashed border-zinc-800">
+                  Click &quot;Re-run Scan&quot; to execute forensic integrity checks, or explore visualizations below.
+                </div>
+                <EmbeddedPlotlyStudio
+                  title="Forensic Interactive Plotly Studio (2D Vector & 3D WebGL)"
+                  columns={columns}
+                  chartType={selectedChartType}
+                  xCol={xCol}
+                  yCol={yCol}
+                  colorCol={colorCol}
+                  chartSpec={chartSpec}
+                  isLoading={isChartLoading}
+                  error={chartError}
+                  onChangeChartType={setSelectedChartType}
+                  onChangeXCol={setXCol}
+                  onChangeYCol={setYCol}
+                  onChangeColorCol={setColorCol}
+                  onGenerate={() => handleGenerateChart()}
+                />
               </div>
             )}
           </div>
         )}
 
-        {/* TAB 3: PLOTLY STUDIO */}
-        {activeLabTab === "viz" && (
-          <div className="space-y-6">
-            {/* Chart Control Bar */}
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-4 space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <span className="text-xs font-mono font-semibold text-zinc-200 flex items-center gap-2">
-                  <BarChart3 className="w-4 h-4 text-emerald-400" />
-                  Vector Chart Studio (2D Vector &amp; 3D WebGL)
-                </span>
-
-                <button
-                  onClick={handleGenerateChart}
-                  disabled={isChartLoading}
-                  className="px-4 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-black font-semibold text-xs font-mono transition-colors flex items-center gap-1.5 shadow-sm"
-                >
-                  {isChartLoading ? (
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <Play className="w-3.5 h-3.5 fill-black" />
-                  )}
-                  <span>Generate Chart</span>
-                </button>
-              </div>
-
-              {/* Variable Selectors */}
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 pt-3 border-t border-zinc-800/80 font-mono text-xs">
-                <div>
-                  <label className="block text-[10px] text-zinc-400 uppercase mb-1">
-                    Chart Type
-                  </label>
-                  <select
-                    value={selectedChartType}
-                    onChange={(e) => setSelectedChartType(e.target.value as LabChartType)}
-                    className="w-full px-2.5 py-1.5 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-200 focus:outline-none focus:border-emerald-500"
-                  >
-                    <option value="distribution">Distribution</option>
-                    <option value="histogram">Histogram</option>
-                    <option value="bar">Bar Chart</option>
-                    <option value="scatter">Scatter Plot</option>
-                    <option value="line">Line Trend</option>
-                    <option value="heatmap">Heatmap</option>
-                    <option value="correlation">Correlation Matrix</option>
-                    <option value="box">Box Plot</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-[10px] text-zinc-400 uppercase mb-1">
-                    X Axis Column
-                  </label>
-                  <select
-                    value={xCol}
-                    onChange={(e) => setXCol(e.target.value)}
-                    className="w-full px-2.5 py-1.5 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-200 focus:outline-none focus:border-emerald-500"
-                  >
-                    <option value="">[Auto-Select]</option>
-                    {columns.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-[10px] text-zinc-400 uppercase mb-1">
-                    Y Axis Column
-                  </label>
-                  <select
-                    value={yCol}
-                    onChange={(e) => setYCol(e.target.value)}
-                    className="w-full px-2.5 py-1.5 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-200 focus:outline-none focus:border-emerald-500"
-                  >
-                    <option value="">[Optional / Auto]</option>
-                    {columns.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-[10px] text-zinc-400 uppercase mb-1">
-                    Color Hue Group
-                  </label>
-                  <select
-                    value={colorCol}
-                    onChange={(e) => setColorCol(e.target.value)}
-                    className="w-full px-2.5 py-1.5 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-200 focus:outline-none focus:border-emerald-500"
-                  >
-                    <option value="">[None]</option>
-                    {columns.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {chartError && (
-                <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-xs font-mono text-rose-300">
-                  {chartError}
-                </div>
-              )}
-            </div>
-
-            {/* Plotly Canvas Container */}
-            {chartSpec ? (
-              <PlotlyCanvas
-                spec={chartSpec as any}
-                title={`${selectedChartType.toUpperCase()}: ${xCol}${yCol ? ` vs ${yCol}` : ""}`}
-              />
-            ) : (
-              <div className="w-full h-80 rounded-xl border border-zinc-800 bg-zinc-950/40 flex flex-col items-center justify-center text-xs font-mono text-zinc-500 space-y-2">
-                <BarChart3 className="w-8 h-8 text-zinc-700" />
-                <p>Select dimensions above and click &quot;Generate Chart&quot;</p>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* TAB 4: PREDICTION LAB */}
+        {/* TAB 3: PREDICTIVE AUTOML LAB */}
         {activeLabTab === "predict" && (
           <PredictionLab fileId={fileId} columns={columns} />
         )}
 
-        {/* TAB 5: DUCKDB SQL SANDBOX */}
+        {/* TAB 4: DUCKDB SQL SANDBOX */}
         {activeLabTab === "sql" && (
           <div className="space-y-4">
             <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-4 space-y-3">

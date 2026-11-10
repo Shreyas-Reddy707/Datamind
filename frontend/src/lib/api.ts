@@ -6,6 +6,8 @@ import {
   PredictDiagnoseRequest,
   PredictDiagnoseResponse,
   PredictRunRequest,
+  PredictSimulateRequest,
+  PredictSimulateResponse,
   User,
   UserFile,
   AnalysisMemory,
@@ -365,6 +367,15 @@ export const api = {
     },
     async get(predictionId: string): Promise<PredictionHistory> {
       return apiFetch<PredictionHistory>(`/api/v1/predict/${predictionId}`);
+    },
+    async simulate(
+      fileId: string,
+      payload: PredictSimulateRequest = {}
+    ): Promise<PredictSimulateResponse> {
+      return apiFetch<PredictSimulateResponse>(`/api/v1/predict/${fileId}/simulate`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
     },
   },
 

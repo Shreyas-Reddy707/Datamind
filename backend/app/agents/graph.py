@@ -111,7 +111,22 @@ async def summary_agent_node(state: AgentState) -> dict[str, Any]:
     )
     content = res.get("content", "")
 
-    brief, detailed = _split_brief_detailed(content)
+    if res.get("model") == "offline-fallback" or not content.strip():
+        num_cols = profile.get("numeric_columns", [])[:5]
+        cat_cols = profile.get("categorical_columns", [])[:5]
+        brief = (
+            f"Dataset covers **{row_count:,} records** across **{col_count} columns** "
+            f"(Data Health Score: **{health}/100**)."
+        )
+        detailed = (
+            f"## Dataset Executive Summary\n\n"
+            f"- **Domain Focus**: {domain}\n"
+            f"- **Numeric Dimensions**: {', '.join(f'`{c}`' for c in num_cols) or 'None'}\n"
+            f"- **Categorical Dimensions**: {', '.join(f'`{c}`' for c in cat_cols) or 'None'}\n"
+            f"- **Completeness**: {profile.get('total_nulls', 0):,} missing cells across dataset."
+        )
+    else:
+        brief, detailed = _split_brief_detailed(content)
     artifact = None
     # Generate baseline chart if parquet is accessible
     parquet_path = state.get("parquet_path")
@@ -207,7 +222,25 @@ async def analyst_agent_node(state: AgentState) -> dict[str, Any]:
         max_tokens=1200,
     )
     content = res.get("content", "")
-    brief, detailed = _split_brief_detailed(content)
+    if res.get("model") == "offline-fallback" or not content.strip():
+        profile = state.get("data_profile", {})
+        col_stats = profile.get("columns", {})
+        targets = [c for c in state.get("target_columns", []) if c in valid_cols] or valid_cols[:3]
+        lines = []
+        for col in targets[:4]:
+            st = col_stats.get(col, {})
+            if "mean" in st and st["mean"] is not None:
+                lines.append(
+                    f"- **`{col}`**: mean={st['mean']}, min={st.get('min')}, max={st.get('max')}, null%={st.get('null_percentage', 0)}%"
+                )
+            else:
+                lines.append(
+                    f"- **`{col}`**: {st.get('distinct_count', 'N/A')} distinct categories, null%={st.get('null_percentage', 0)}%"
+                )
+        brief = f"Analyzed {len(targets)} key dimension(s): {', '.join(f'`{c}`' for c in targets[:3])} across {profile.get('total_rows', 0):,} rows."
+        detailed = "## Empirical Schema Summary\n\n" + "\n".join(lines)
+    else:
+        brief, detailed = _split_brief_detailed(content)
 
     return {
         "brief_response": brief,
@@ -337,8 +370,63 @@ async def schema_firewall_node(state: AgentState) -> dict[str, Any]:
     potential_cols = re.findall(r"`([a-zA-Z_][\w\s]*)`", text_to_check)
 
     hallucinations = []
-    # Reserved terms that are not columns
-    reserved = {"action", "context", "finding", "evidence", "implication", "brief", "detailed"}
+    # Reserved terms that are not dataset column identifiers
+    reserved = {
+        "action",
+        "context",
+        "finding",
+        "evidence",
+        "implication",
+        "brief",
+        "detailed",
+        "classification",
+        "regression",
+        "clustering",
+        "timeseries",
+        "time-series",
+        "randomforest",
+        "gradientboosting",
+        "logisticregression",
+        "ridge",
+        "kmeans",
+        "accuracy",
+        "rmse",
+        "mae",
+        "mape",
+        "inertia",
+        "roc_auc",
+        "distribution",
+        "histogram",
+        "scatter",
+        "heatmap",
+        "correlation",
+        "boxplot",
+        "select",
+        "from",
+        "where",
+        "group",
+        "order",
+        "limit",
+        "dataset",
+        "duckdb",
+        "parquet",
+        "overview",
+        "forensic",
+        "forensics",
+        "automl",
+        "simulator",
+        "what-if",
+        "python",
+        "json",
+        "plotly",
+        "scikit-learn",
+        "offline",
+        "tier",
+        "null",
+        "none",
+        "true",
+        "false",
+    }
 
     for candidate in potential_cols:
         clean_cand = candidate.strip()

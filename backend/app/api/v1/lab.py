@@ -28,6 +28,7 @@ from app.models.user import User
 from app.schemas.lab import (
     AnalysisMemoryResponse,
     LabAnalyzeRequest,
+    LabQueryRequest,
     LabVisualizeRequest,
 )
 
@@ -214,8 +215,12 @@ async def generate_chart_spec_endpoint(
     ctype = request.chart_type.lower().strip()
 
     spec = None
-    if ctype in ("distribution", "histogram", "bar"):
-        col = request.column or (df.columns[0] if not df.empty else None)
+    if ctype == "bar":
+        x = request.x_col or request.column or (df.columns[0] if not df.empty else None)
+        if x:
+            spec = ChartBuilder.build_bar(df, x, request.y_col, request.color_col)
+    elif ctype in ("distribution", "histogram"):
+        col = request.column or request.x_col or (df.columns[0] if not df.empty else None)
         if col:
             spec = ChartBuilder.build_distribution(df, col)
     elif ctype == "scatter":
@@ -231,7 +236,7 @@ async def generate_chart_spec_endpoint(
         else:
             x = request.x_col
             y = request.y_col
-        spec = ChartBuilder.build_scatter(df, x, y)
+        spec = ChartBuilder.build_scatter(df, x, y, color_col=request.color_col)
     elif ctype == "line":
         if not request.x_col or not request.y_col:
             raise HTTPException(
@@ -242,13 +247,14 @@ async def generate_chart_spec_endpoint(
     elif ctype in ("heatmap", "correlation"):
         spec = ChartBuilder.build_heatmap(df)
     elif ctype == "box":
-        col = request.column or (df.select_dtypes(include=["number"]).columns[0] if not df.empty else None)
+        col = request.column or request.y_col or (df.select_dtypes(include=["number"]).columns[0] if not df.empty else None)
+        cat = request.x_col if request.x_col and request.x_col != col else None
         if col:
-            spec = ChartBuilder.build_box(df, col, request.x_col)
+            spec = ChartBuilder.build_box(df, col, cat)
     else:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unsupported chart type '{request.chart_type}'. Choose distribution, scatter, line, heatmap, or box.",
+            detail=f"Unsupported chart type '{request.chart_type}'. Choose distribution, bar, scatter, line, heatmap, or box.",
         )
 
     if not spec:
@@ -263,6 +269,54 @@ async def generate_chart_spec_endpoint(
         "data": spec.get("data", []),
         "layout": spec.get("layout", {}),
     }
+
+
+@router.post("/{file_id}/query")
+async def execute_lab_sql_query_endpoint(
+    file_id: uuid.UUID,
+    request: LabQueryRequest,
+    current_user: User = Depends(get_current_user),
+    user_file: UserFile = Depends(get_authorized_user_file),
+    db: AsyncSession = Depends(get_db),
+):
+    """Execute read-only sandboxed SQL query via DuckDB against Parquet dataset (and optional joined datasets)."""
+    sql_text = (request.sql or request.query or "").strip()
+    if not sql_text:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="SQL query text is required.",
+        )
+
+    named_joins: list[tuple[str, str]] = []
+    if request.join_file_ids:
+        join_stmt = select(UserFile).where(
+            UserFile.id.in_(request.join_file_ids),
+            UserFile.user_id == current_user.id,
+        )
+        join_files = (await db.scalars(join_stmt)).all()
+        for jf in join_files:
+            if jf.id != user_file.id and jf.global_file:
+                alias = re.sub(r"\.[^.]+$", "", jf.display_name)
+                named_joins.append((alias, jf.global_file.parquet_path))
+
+    gf = user_file.global_file
+    try:
+        result = await asyncio.to_thread(
+            DuckDBManager.execute_sql_tabular,
+            gf.parquet_path,
+            sql_text,
+            named_joins or None,
+            100,
+        )
+        return result
+    except ValueError as ve:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(ve)) from ve
+    except Exception as exc:
+        logger.warning("DuckDB SQL query failed for file %s: %s", file_id, exc)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"SQL execution error: {exc}",
+        ) from exc
 
 
 @router.post("/{file_id}/analyze", response_model=AnalysisMemoryResponse)

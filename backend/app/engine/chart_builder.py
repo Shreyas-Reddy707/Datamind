@@ -64,6 +64,76 @@ class ChartBuilder:
         return json.loads(fig.to_json())
 
     @classmethod
+    def build_bar(
+        cls,
+        df: pd.DataFrame,
+        x_col: str,
+        y_col: str | None = None,
+        color_col: str | None = None,
+        max_categories: int = 15,
+    ) -> dict[str, Any] | None:
+        """Grouped or aggregated bar chart comparing y_col across categories of x_col."""
+        if x_col not in df.columns:
+            return None
+
+        if not y_col or y_col not in df.columns or x_col == y_col:
+            return cls.build_distribution(df, x_col, max_categories=max_categories)
+
+        # Bin numeric x_col if high cardinality, or take top categories
+        work_df = df[[x_col, y_col] + ([color_col] if color_col and color_col in df.columns and color_col not in (x_col, y_col) else [])].dropna(subset=[x_col, y_col])
+        if work_df.empty:
+            return None
+
+        if pd.api.types.is_numeric_dtype(work_df[x_col]) and work_df[x_col].nunique() > max_categories:
+            work_df = work_df.copy()
+            work_df["_bin"] = pd.qcut(work_df[x_col], q=min(8, work_df[x_col].nunique()), duplicates="drop").astype(str)
+            group_col = "_bin"
+        else:
+            top_cats = work_df[x_col].value_counts().head(max_categories).index
+            work_df = work_df[work_df[x_col].isin(top_cats)].copy()
+            work_df[x_col] = work_df[x_col].astype(str)
+            group_col = x_col
+
+        if pd.api.types.is_numeric_dtype(work_df[y_col]):
+            if color_col and color_col in work_df.columns and color_col not in (x_col, y_col):
+                top_colors = work_df[color_col].value_counts().head(6).index
+                work_df = work_df[work_df[color_col].isin(top_colors)].copy()
+                work_df[color_col] = work_df[color_col].astype(str)
+                agg = work_df.groupby([group_col, color_col], observed=True)[y_col].mean().reset_index()
+                fig = px.bar(
+                    agg,
+                    x=group_col,
+                    y=y_col,
+                    color=color_col,
+                    barmode="group",
+                    labels={group_col: x_col, y_col: f"Avg {y_col}"},
+                    title=f"Average {y_col} by {x_col} & {color_col}",
+                )
+            else:
+                agg = work_df.groupby(group_col, observed=True)[y_col].mean().reset_index()
+                fig = px.bar(
+                    agg,
+                    x=group_col,
+                    y=y_col,
+                    color_discrete_sequence=["#10B981"],
+                    labels={group_col: x_col, y_col: f"Avg {y_col}"},
+                    title=f"Average {y_col} by {x_col}",
+                )
+        else:
+            counts = work_df.groupby([group_col, y_col], observed=True).size().reset_index(name="count")
+            fig = px.bar(
+                counts,
+                x=group_col,
+                y="count",
+                color=y_col,
+                barmode="group",
+                labels={group_col: x_col, "count": "Count"},
+                title=f"{x_col} Breakdown by {y_col}",
+            )
+
+        return cls.to_spec(fig)
+
+    @classmethod
     def build_distribution(
         cls, df: pd.DataFrame, column: str, max_categories: int = 15
     ) -> dict[str, Any] | None:

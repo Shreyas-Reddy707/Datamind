@@ -85,6 +85,17 @@ CLEANING_KEYWORDS = [
     "audit",
 ]
 
+GREETING_REGEX = r"^(hi|hello|hey|yo|greetings|good\s+(morning|afternoon|evening)|thanks?|thank\s+you)[\s!?.,]*$"
+
+PLATFORM_HELP_PATTERNS = [
+    r"\b(auto\s*ml|automl)\b.*\b(doing|work|use|is|explain|lab)\b",
+    r"\b(what|how)\b.*\b(auto\s*ml|automl|forensic|what-if|simulator|sql\s*sandbox|datamind)\b",
+    r"\bfeature\s+weights?\b.*\b(mean|work|are|explain)\b",
+    r"\bhow\s+(do\s+i|to)\s+(use|predict|start|run|analyze)\b",
+    r"\bwhat\s+can\s+you\s+do\b",
+    r"^help[\s!?.,]*$",
+]
+
 
 class ChatClassifier:
     """Classifies user queries into Tier 1, Tier 2, or Tier 3 with target column extraction."""
@@ -93,6 +104,18 @@ class ChatClassifier:
     def classify(cls, query: str, active_columns: list[str]) -> dict[str, Any]:
         """Classify query into tier and intent, extracting target columns via fuzzy matching."""
         q_lower = query.lower().strip()
+
+        # 0. Customer Greetings & Platform Guide Questions
+        is_greeting = bool(re.match(GREETING_REGEX, q_lower))
+        is_platform_help = any(re.search(p, q_lower) for p in PLATFORM_HELP_PATTERNS)
+        if is_greeting or is_platform_help:
+            return {
+                "tier": 1,
+                "intent": "help",
+                "target_columns": [],
+                "render_to_lab": False,
+                "lab_target": "analysis",
+            }
 
         # 1. Tier 1 Check (Deterministic Math & Stats)
         is_tier1 = any(re.search(p, q_lower) for p in STAT_PATTERNS)

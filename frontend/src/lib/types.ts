@@ -35,6 +35,98 @@ export interface PredictRunRequest {
   task_type?: PredictTaskType;
 }
 
+export interface PredictSimulateRequest {
+  prediction_id?: string | null;
+  target_col?: string | null;
+  inputs?: Record<string, string | number>;
+}
+
+export interface SimulationControl {
+  name: string;
+  type: "numeric" | "categorical";
+  weight: number;
+  min?: number;
+  max?: number;
+  step?: number;
+  options?: string[];
+  baseline_value: string | number;
+  current_value: string | number;
+  summary_hint?: string;
+}
+
+export interface SimulationContribution {
+  feature: string;
+  current_value: string | number;
+  baseline_value: string | number;
+  delta: number;
+  direction: "increases" | "decreases" | "neutral";
+  weight: number;
+}
+
+export interface SimulationPreset {
+  id: string;
+  label: string;
+  inputs: Record<string, string | number>;
+}
+
+export interface PredictSimulateResponse {
+  target_column: string;
+  task_type: string;
+  top_drivers: string[];
+  quarantined_leakage: string[];
+  feature_controls: SimulationControl[];
+  baseline_prediction: {
+    scalar: number;
+    predicted_class?: string;
+    probability_pct?: number;
+    positive_class?: string;
+    positive_probability_pct?: number;
+    predicted_value?: number;
+    confidence_band?: number;
+  };
+  simulated_prediction: {
+    scalar: number;
+    predicted_class?: string;
+    probability_pct?: number;
+    positive_class?: string;
+    positive_probability_pct?: number;
+    predicted_value?: number;
+    confidence_band?: number;
+  };
+  delta: number;
+  unit: string;
+  factor_contributions: SimulationContribution[];
+  presets: SimulationPreset[];
+  executive_summary: {
+    what_is_predicted: string;
+    primary_drivers: string[];
+    actionable_levers: string[];
+  };
+}
+
+export interface LeaderboardItem {
+  model?: string;
+  model_name?: string;
+  metric?: string;
+  metric_name?: string;
+  cv_mean?: number | null;
+  cv_std?: number | null;
+  mean_cv_score?: number | null;
+  std_cv_score?: number | null;
+  score?: number | null;
+  std?: number | null;
+  train_time_sec?: number | null;
+  optimal_k?: number | null;
+  inertia?: number | null;
+}
+
+export interface FeatureImportanceItem {
+  feature?: string;
+  name?: string;
+  importance?: number | null;
+  score?: number | null;
+}
+
 export interface PredictionHistory {
   id: string;
   user_file_id: string;
@@ -42,17 +134,15 @@ export interface PredictionHistory {
   target_column: string | null;
   feature_columns: string[];
   best_model_name: string | null;
-  leaderboard_json?: {
-    leaderboard?: Array<{
-      model: string;
-      cv_mean: number;
-      cv_std: number;
-      train_time_sec?: number;
-    }>;
-    test_metric?: string;
-    test_value?: number;
-  } | null;
-  feature_importance_json?: Record<string, number> | null;
+  leaderboard_json?:
+    | {
+        leaderboard?: LeaderboardItem[];
+        test_metric?: string;
+        test_value?: number;
+      }
+    | LeaderboardItem[]
+    | null;
+  feature_importance_json?: Record<string, number> | FeatureImportanceItem[] | null;
   diagnostics_json?: Record<string, unknown> | null;
   status: "queued" | "running" | "completed" | "failed";
   created_at: string;

@@ -55,6 +55,12 @@ class LLMClient:
         self.quick_timeout = quick_timeout
         self.deep_timeout = deep_timeout
         self._ollama_embed_unavailable_until: float = 0.0
+        self._ollama_chat_unavailable_until: float = 0.0
+
+    def is_chat_circuit_open(self, model: str | None = None) -> bool:
+        """Return True when local Ollama chat circuit breaker is currently tripped."""
+        target_model = model or self.default_model
+        return target_model.startswith("ollama/") and time.time() < self._ollama_chat_unavailable_until
 
     async def chat_completion(
         self,
@@ -65,15 +71,25 @@ class LLMClient:
         timeout: int | None = None,
         max_retries: int = 2,
     ) -> dict[str, Any]:
-        """Execute chat completion with exponential backoff and token tracking."""
+        """Execute chat completion with exponential backoff and offline circuit breaker."""
         target_model = model or self.default_model
-        req_timeout = timeout or self.quick_timeout
+        is_ollama = target_model.startswith("ollama/")
+        req_timeout = min(timeout or self.quick_timeout, 2.5) if is_ollama else (timeout or self.quick_timeout)
+
+        if self.is_chat_circuit_open(target_model):
+            return {
+                "content": "",
+                "model": "offline-fallback",
+                "tokens": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+                "finish_reason": "circuit_open",
+            }
 
         last_error = None
-        for attempt in range(max_retries + 1):
+        attempts = 1 if is_ollama else (max_retries + 1)
+        for attempt in range(attempts):
             try:
                 extra_kwargs = {}
-                if target_model.startswith("ollama/"):
+                if is_ollama:
                     extra_kwargs["api_base"] = self.base_url
 
                 response = await asyncio.wait_for(
@@ -103,22 +119,28 @@ class LLMClient:
                 }
             except Exception as e:
                 last_error = e
+                if is_ollama:
+                    self._ollama_chat_unavailable_until = time.time() + 60.0
+                    logger.info(
+                        "Local Ollama chat unavailable (%s); activating 60s circuit breaker.",
+                        type(e).__name__,
+                    )
+                    break
                 logger.warning(
                     "LLM chat attempt %d failed for %s: %s",
                     attempt + 1,
                     target_model,
                     str(e),
                 )
-                if attempt < max_retries:
+                if attempt < attempts - 1:
                     await asyncio.sleep(0.5 * (2**attempt))
 
-        # Graceful degradation / offline fallback
-        logger.error("All LLM attempts failed for %s. Generating deterministic brief.", target_model)
         return {
-            "content": f"Analytical note: Query processed under offline mode. Error: {str(last_error)}",
+            "content": "",
             "model": "offline-fallback",
             "tokens": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
             "finish_reason": "fallback",
+            "error": str(last_error) if last_error else "offline",
         }
 
     async def stream_chat_completion(
@@ -131,10 +153,14 @@ class LLMClient:
     ) -> AsyncGenerator[str, None]:
         """Stream chat tokens asynchronously for Server-Sent Events (SSE)."""
         target_model = model or self.default_model
-        req_timeout = timeout or self.deep_timeout
+        is_ollama = target_model.startswith("ollama/")
+        req_timeout = min(timeout or self.deep_timeout, 2.5) if is_ollama else (timeout or self.deep_timeout)
+
+        if self.is_chat_circuit_open(target_model):
+            return
 
         extra_kwargs = {}
-        if target_model.startswith("ollama/"):
+        if is_ollama:
             extra_kwargs["api_base"] = self.base_url
 
         try:
@@ -155,8 +181,14 @@ class LLMClient:
                 if delta:
                     yield delta
         except Exception as e:
-            logger.warning("Streaming failed for %s: %s. Yielding fallback.", target_model, e)
-            yield f"\n[Analysis completed with offline fallback: {str(e)}]"
+            if is_ollama:
+                self._ollama_chat_unavailable_until = time.time() + 60.0
+                logger.info(
+                    "Local Ollama stream unavailable (%s); activating 60s circuit breaker.",
+                    type(e).__name__,
+                )
+            else:
+                logger.warning("Streaming failed for %s: %s.", target_model, e)
 
     async def get_embedding(self, text: str) -> list[float]:
         """

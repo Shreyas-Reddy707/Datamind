@@ -24,6 +24,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
+import { safeLocale } from "@/lib/format";
 import { User, UserFile } from "@/lib/types";
 import { TiltCard3D } from "@/components/spatial/TiltCard3D";
 
@@ -380,7 +381,7 @@ export default function DashboardPage() {
                       <div className="p-5 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                         {groupDatasets.map((dataset) => {
                           const gf = dataset.global_file;
-                          const sizeKb = Math.round(gf.file_size_bytes / 1024);
+                          const sizeKb = Math.round((gf?.file_size_bytes ?? 0) / 1024);
 
                           return (
                             <div
@@ -419,7 +420,7 @@ export default function DashboardPage() {
                                   <div>
                                     <span className="text-[10px] text-zinc-500 block uppercase">Rows</span>
                                     <span className="text-zinc-200 font-semibold">
-                                      {gf.row_count?.toLocaleString() ?? "—"}
+                                      {safeLocale(gf?.row_count, "—")}
                                     </span>
                                   </div>
                                   <div>
@@ -449,7 +450,7 @@ export default function DashboardPage() {
                                     <span className="truncate">Forensics</span>
                                   </Link>
                                   <Link
-                                    href={`/workspace/${dataset.id}?tab=viz`}
+                                    href={`/workspace/${dataset.id}?tab=forensic`}
                                     className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 hover:border-emerald-500/50 hover:bg-emerald-500/10 text-zinc-300 hover:text-emerald-300 transition-colors"
                                   >
                                     <BarChart3 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />

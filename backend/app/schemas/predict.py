@@ -31,6 +31,12 @@ class PredictRunRequest(BaseModel):
     )
 
 
+class PredictSimulateRequest(BaseModel):
+    prediction_id: uuid.UUID | None = None
+    target_col: str | None = Field(default=None, max_length=128)
+    inputs: dict[str, Any] = Field(default_factory=dict)
+
+
 class PredictionHistoryResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
