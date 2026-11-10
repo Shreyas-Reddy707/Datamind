@@ -250,10 +250,16 @@ def _build_customer_help_response(
 
     model_note = ""
     if latest_pred and latest_pred.status == "completed" and latest_pred.target_column:
+        top_feats_note = ""
+        if isinstance(latest_pred.feature_importance_json, dict) and latest_pred.feature_importance_json:
+            top_items = list(latest_pred.feature_importance_json.items())[:5]
+            top_feats_note = " Top weighted drivers: " + ", ".join(
+                f"`{k}` ({float(v) * 100:.1f}%)" for k, v in top_items
+            ) + "."
         model_note = (
             f"\n\n**Active Prediction on `{display_name}`**: "
             f"Predicting **`{latest_pred.target_column}`** ({latest_pred.task_type}) "
-            f"with **{latest_pred.best_model_name or 'best model'}**."
+            f"with **{latest_pred.best_model_name or 'best model'}**.{top_feats_note}"
         )
 
     if any(k in q_low for k in ["automl", "auto ml", "feature weight", "what-if", "simulator", "predict"]):
@@ -440,17 +446,49 @@ async def chat_stream_endpoint(
         for h in reversed(hist_rows)
     ]
 
-    latest_pred_stmt = (
-        select(PredictionHistory)
-        .where(
-            PredictionHistory.user_file_id == user_file.id,
-            PredictionHistory.user_id == current_user.id,
-            PredictionHistory.status == "completed",
+    target_cols_cls = classification.get("target_columns") or []
+    latest_pred = None
+    if target_cols_cls:
+        target_pred_stmt = (
+            select(PredictionHistory)
+            .where(
+                PredictionHistory.user_file_id == user_file.id,
+                PredictionHistory.user_id == current_user.id,
+                PredictionHistory.status == "completed",
+                PredictionHistory.target_column == target_cols_cls[0],
+            )
+            .order_by(PredictionHistory.created_at.desc())
+            .limit(1)
         )
-        .order_by(PredictionHistory.created_at.desc())
-        .limit(1)
+        latest_pred = await db.scalar(target_pred_stmt)
+
+    if not latest_pred:
+        latest_pred_stmt = (
+            select(PredictionHistory)
+            .where(
+                PredictionHistory.user_file_id == user_file.id,
+                PredictionHistory.user_id == current_user.id,
+                PredictionHistory.status == "completed",
+            )
+            .order_by(PredictionHistory.created_at.desc())
+            .limit(1)
+        )
+        latest_pred = await db.scalar(latest_pred_stmt)
+
+    latest_pred_payload = (
+        {
+            "id": str(latest_pred.id),
+            "task_type": latest_pred.task_type,
+            "target_column": latest_pred.target_column,
+            "best_model_name": latest_pred.best_model_name,
+            "leaderboard_json": latest_pred.leaderboard_json,
+            "feature_importance_json": latest_pred.feature_importance_json,
+            "diagnostics_json": latest_pred.diagnostics_json,
+            "feature_columns": latest_pred.feature_columns,
+        }
+        if latest_pred
+        else None
     )
-    latest_pred = await db.scalar(latest_pred_stmt)
 
     # Fetch all datasets owned by current_user for global awareness & switching
     all_files_stmt = (
@@ -628,6 +666,7 @@ async def chat_stream_endpoint(
                 "recent_history": recent_history,
                 "intent": intent,
                 "target_columns": classification.get("target_columns", []),
+                "latest_prediction": latest_pred_payload,
                 "current_step": 0,
                 "max_steps": 8,
                 "token_budget": 6000,

@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-from typing import Any, TypedDict
+from typing import Any, NotRequired, TypedDict
 
 import pandas as pd
 from langgraph.graph import END, StateGraph
@@ -32,6 +32,7 @@ class AgentState(TypedDict):
     recent_history: list[dict[str, str]]
     intent: str  # analyze, visualize, summarize, clean, predict
     target_columns: list[str]
+    latest_prediction: NotRequired[dict[str, Any] | None]
     current_step: int
     max_steps: int
     token_budget: int
@@ -53,7 +54,10 @@ async def orchestrator_node(state: AgentState) -> dict[str, Any]:
     intent = state.get("intent", "analyze")
     cols = list(state.get("schema_json", {}).get("columns", {}).keys())
 
-    if any(k in query for k in ["predict", "forecast", "future", "simulate", "model", "what-if"]):
+    if any(
+        k in query
+        for k in ["predict", "forecast", "future", "simulate", "model", "what-if", "feature weight", "feature importance"]
+    ):
         intent = "predict"
     elif any(k in query for k in ["chart", "plot", "graph", "visualize", "histogram", "heatmap", "scatter"]):
         intent = "visualize"
@@ -301,22 +305,229 @@ async def viz_agent_node(state: AgentState) -> dict[str, Any]:
 # ==============================================================================
 # 6. Predict Agent Node
 # ==============================================================================
+_MODEL_DISPLAY_NAMES: dict[str, str] = {
+    "RandomForest": "Random Forest",
+    "GradientBoosting": "Gradient Boosting",
+    "LogisticRegression": "Logistic Regression",
+    "Ridge": "Ridge (Linear Regression)",
+    "KMeans": "K-Means Clustering",
+}
+
+
+def _suggest_default_target(df: pd.DataFrame) -> str | None:
+    """Pick prioritized outcome target matching PredictionLab UI defaults."""
+    for col in df.columns:
+        cl = str(col).lower()
+        if (
+            cl in ("is_canceled", "canceled", "churn", "target", "label", "adr")
+            or cl.startswith("is_")
+            or cl.endswith("_churn")
+        ):
+            return str(col)
+    return None
+
+
+def _format_metric_score(metric: str | None, value: Any) -> str:
+    """Render numeric benchmark scores into readable accuracy / R2 strings."""
+    if value is None:
+        return "pending"
+    try:
+        num = float(value)
+    except (TypeError, ValueError):
+        return str(value)
+    metric_low = (metric or "").lower()
+    if metric_low == "accuracy" and num <= 1.0:
+        return f"{num * 100:.1f}% accuracy"
+    if metric_low == "r2":
+        return f"R² = {num:.3f}"
+    if metric_low == "inertia":
+        return f"inertia = {num:,.1f}"
+    return f"{metric_low}: {num:.4f}" if metric_low else f"{num:.4f}"
+
+
+def _extract_prediction_facts(
+    df: pd.DataFrame,
+    requested_target: str | None,
+    latest_pred: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Gather target, candidate/winning AI models, top column weights, and leakage exclusions."""
+    # Prefer explicit query target; else reuse latest completed run's target; else UI heuristic
+    target_candidate = requested_target if (requested_target and requested_target in df.columns) else None
+    has_matching_pred = bool(
+        latest_pred
+        and latest_pred.get("target_column") in df.columns
+        and (not target_candidate or latest_pred.get("target_column") == target_candidate)
+    )
+    if not target_candidate and has_matching_pred and latest_pred:
+        target_candidate = latest_pred.get("target_column")
+    if not target_candidate:
+        target_candidate = _suggest_default_target(df)
+
+    diag = UniversalMLRunner.diagnose_data(df, target_candidate)
+    if not diag["can_proceed"]:
+        return {
+            "can_proceed": False,
+            "diagnostics": diag,
+            "effective_target": target_candidate,
+        }
+
+    effective_target = diag.get("suggested_target") or target_candidate
+    task_type = (
+        latest_pred.get("task_type")
+        if (has_matching_pred and latest_pred and latest_pred.get("task_type"))
+        else UniversalMLRunner.auto_select_task(df, effective_target)
+    )
+
+    leakage_cols = list(diag.get("dropped_leakage_columns") or [])
+    if has_matching_pred and latest_pred:
+        pred_diag_leak = (latest_pred.get("diagnostics_json") or {}).get("dropped_leakage_columns") or []
+        for lc in pred_diag_leak:
+            if lc not in leakage_cols:
+                leakage_cols.append(lc)
+
+    sample_df = df.sample(n=min(len(df), 10000), random_state=42) if len(df) > 10000 else df
+    raw_fi = latest_pred.get("feature_importance_json") if (has_matching_pred and latest_pred) else None
+    top_weights = (
+        UniversalMLRunner._extract_raw_feature_weights(sample_df, effective_target, raw_fi, leakage_cols)
+        if effective_target
+        else []
+    )
+    weight_source = (
+        "trained AutoML feature importance"
+        if (has_matching_pred and isinstance(raw_fi, dict) and len(raw_fi) > 0)
+        else "pre-run feature correlation & driver ranking"
+    )
+
+    # Extract benchmark leaderboard or default model suite for task_type
+    model_lines: list[str] = []
+    best_model_summary: str | None = None
+    if has_matching_pred and latest_pred:
+        lb_raw = latest_pred.get("leaderboard_json") or {}
+        lb_entries = lb_raw.get("leaderboard", []) if isinstance(lb_raw, dict) else (lb_raw if isinstance(lb_raw, list) else [])
+        best_raw_name = latest_pred.get("best_model_name") or ""
+        best_display = _MODEL_DISPLAY_NAMES.get(best_raw_name, best_raw_name)
+        test_metric = lb_raw.get("test_metric") if isinstance(lb_raw, dict) else None
+        test_value = lb_raw.get("test_value") if isinstance(lb_raw, dict) else None
+        if best_display:
+            score_txt = _format_metric_score(test_metric, test_value)
+            best_model_summary = f"**{best_display}** ({score_txt} on holdout test set)"
+        for entry in lb_entries:
+            if not isinstance(entry, dict):
+                continue
+            m_raw = str(entry.get("model") or entry.get("model_name") or "")
+            m_name = _MODEL_DISPLAY_NAMES.get(m_raw, m_raw)
+            m_metric = entry.get("metric") or entry.get("metric_name") or test_metric
+            m_score = entry.get("cv_mean") if entry.get("cv_mean") is not None else entry.get("mean_cv_score")
+            marker = " — Best Model" if m_raw == best_raw_name and best_raw_name else ""
+            model_lines.append(f"**{m_name}** (CV {_format_metric_score(m_metric, m_score)}){marker}")
+
+    if not model_lines:
+        if task_type == "classification":
+            model_lines = [
+                "**Random Forest** (`RandomForestClassifier` — ensemble decision trees)",
+                "**Gradient Boosting** (`GradientBoostingClassifier` — sequential error-correcting trees)",
+                "**Logistic Regression** (`LogisticRegression` — linear baseline classifier)",
+            ]
+        elif task_type in ("regression", "timeseries"):
+            model_lines = [
+                "**Random Forest** (`RandomForestRegressor` — ensemble decision trees)",
+                "**Gradient Boosting** (`GradientBoostingRegressor` — sequential boosted trees)",
+                "**Linear Regression (Ridge)** (`Ridge` — L2-regularized linear model)",
+            ]
+        else:
+            model_lines = ["**K-Means Clustering** (unsupervised cluster segmentation via inertia elbow)"]
+
+    return {
+        "can_proceed": True,
+        "diagnostics": diag,
+        "effective_target": effective_target,
+        "task_type": task_type,
+        "row_count": len(df),
+        "usable_feature_count": max(0, len(df.columns) - 1 - len(leakage_cols)),
+        "has_completed_run": has_matching_pred,
+        "best_model_summary": best_model_summary,
+        "model_lines": model_lines,
+        "top_weights": top_weights,
+        "weight_source": weight_source,
+        "leakage_cols": leakage_cols,
+    }
+
+
+def _build_prediction_fallback(facts: dict[str, Any]) -> tuple[str, str]:
+    """Build detailed, human-friendly Markdown explanation of models and column weights."""
+    target = facts["effective_target"]
+    task_label = str(facts["task_type"]).capitalize()
+    row_count = facts["row_count"]
+    best_summary = facts["best_model_summary"]
+    model_lines = facts["model_lines"]
+    top_weights: list[tuple[str, float]] = facts["top_weights"]
+    leakage_cols: list[str] = facts["leakage_cols"]
+
+    if best_summary:
+        brief = (
+            f"Predicting `{target}` (**{task_label}**) across **{row_count:,} rows**. "
+            f"Best benchmarked model: {best_summary}."
+        )
+    else:
+        brief = (
+            f"Configured to predict `{target}` (**{task_label}**) across **{row_count:,} rows** "
+            "by comparing **Random Forest**, **Gradient Boosting**, and **Linear / Logistic Regression**."
+        )
+
+    weights_rows = []
+    for rank, (col, w) in enumerate(top_weights[:8], start=1):
+        pct = round(float(w) * 100.0, 1)
+        weights_rows.append(f"| {rank} | `{col}` | **{pct:.1f}%** |")
+
+    weights_table = (
+        "| Rank | Column | Weight Share |\n| :--- | :--- | :--- |\n" + "\n".join(weights_rows)
+        if weights_rows
+        else "_Run prediction in **Predict & Simulate** to calculate per-column feature weights._"
+    )
+    models_bullets = "\n".join(f"- {m}" for m in model_lines)
+    leakage_txt = (
+        ", ".join(f"`{c}`" for c in leakage_cols)
+        if leakage_cols
+        else "None detected"
+    )
+    run_status_note = (
+        f"**Latest Completed Benchmark**: {best_summary}"
+        if best_summary
+        else "**Status**: Ready — open **Predict & Simulate** and click **Run Prediction** to measure live holdout scores."
+    )
+
+    detailed = (
+        f"### 1. Target & Prediction Setup\n"
+        f"- **Target Column**: `{target}` (**{task_label}** across {row_count:,} rows, {facts['usable_feature_count']} active predictor columns)\n"
+        f"- {run_status_note}\n\n"
+        f"### 2. AI Models Benchmarked (Cross-Validation)\n"
+        f"DataMind trains and compares candidate models using K-Fold cross-validation:\n"
+        f"{models_bullets}\n\n"
+        f"### 3. Top Weighted Columns ({facts['weight_source']})\n"
+        f"{weights_table}\n\n"
+        f"### 4. Auto-Excluded Leakage Columns\n"
+        f"- Quarantined post-outcome columns: {leakage_txt}"
+    )
+    return brief, detailed
+
+
 async def predict_agent_node(state: AgentState) -> dict[str, Any]:
-    """Pre-prediction readiness diagnosis and ML pipeline synthesis."""
+    """Explain exact benchmarked AI models, target setup, feature weights, and leakage guards."""
     parquet_path = state.get("parquet_path")
     targets = state.get("target_columns", [])
-    target_col = targets[0] if targets else None
+    requested_target = targets[0] if targets else None
+    latest_pred = state.get("latest_prediction")
 
     if not parquet_path:
         return {
-            "brief_response": "Cannot initiate ML mission without active dataset.",
+            "brief_response": "Cannot inspect prediction models without an active dataset.",
             "detailed_narrative": "Missing dataset path.",
             "current_step": state["current_step"] + 1,
         }
 
     try:
         df = await asyncio.to_thread(pd.read_parquet, parquet_path)
-        diag = await asyncio.to_thread(UniversalMLRunner.diagnose_data, df, target_col)
+        facts = await asyncio.to_thread(_extract_prediction_facts, df, requested_target, latest_pred)
     except Exception as e:
         logger.warning("Predict agent node dataset read/diagnosis failed: %s", e)
         return {
@@ -326,31 +537,80 @@ async def predict_agent_node(state: AgentState) -> dict[str, Any]:
             "current_step": state["current_step"] + 1,
         }
 
-    if not diag["can_proceed"]:
+    if not facts["can_proceed"]:
+        diag = facts["diagnostics"]
         blockers_str = "\n".join([f"- {b}" for b in diag["blockers"]])
-        brief = "ML mission halted due to data validation blockers."
-        detailed = f"## ML Diagnostic Report\n\n### Blockers Detected\n{blockers_str}"
         return {
-            "brief_response": brief,
-            "detailed_narrative": detailed,
-            "lab_artifact": diag,
+            "brief_response": "ML mission halted due to data validation blockers.",
+            "detailed_narrative": f"## ML Diagnostic Report\n\n### Blockers Detected\n{blockers_str}",
+            "lab_artifact": {"type": "diagnostic", **diag},
             "current_step": state["current_step"] + 1,
         }
 
-    task_type = UniversalMLRunner.auto_select_task(df, diag["suggested_target"])
-    brief = f"ML task '{task_type.capitalize()}' is viable for target `{diag['suggested_target']}`."
-    detailed = (
-        f"## Automated ML Mission Readiness\n\n"
-        f"- **Detected Task**: `{task_type.capitalize()}`\n"
-        f"- **Target Column**: `{diag['suggested_target']}`\n"
-        f"- **Sample Readiness**: {len(df):,} observations\n"
-        f"- **Diagnostics**: Zero critical blockers identified."
-    )
+    brief_fb, detailed_fb = _build_prediction_fallback(facts)
+    brief, detailed = brief_fb, detailed_fb
+    tokens_added = 0
+
+    # If local Ollama is online and not recovering from a firewall retry, generate a natural grounded explanation
+    if not state.get("firewall_feedback") and not llm_client.is_chat_circuit_open():
+        top_w_str = ", ".join(
+            f"{col} ({round(float(w) * 100.0, 1)}%)" for col, w in facts["top_weights"][:8]
+        )
+        leak_str = ", ".join(facts["leakage_cols"]) if facts["leakage_cols"] else "None detected"
+        models_str = "; ".join(facts["model_lines"])
+        prompt = (
+            "You are DataMind AI Assistant explaining how predictive modeling works on the user's active dataset.\n"
+            f"User Question: {state['query']}\n\n"
+            "VERIFIED PREDICTION FACTS (USE ONLY THESE EXACT FACTS AND NUMBERS):\n"
+            f"- Target Column: {facts['effective_target']}\n"
+            f"- Prediction Type: {facts['task_type'].capitalize()}\n"
+            f"- Dataset Size: {facts['row_count']:,} rows ({facts['usable_feature_count']} usable predictor columns)\n"
+            f"- Best Model: {facts['best_model_summary'] or 'Not yet run (ready to benchmark)'}\n"
+            f"- Candidate Models Benchmarked via Cross-Validation: {models_str}\n"
+            f"- Top Weighted Columns ({facts['weight_source']}): {top_w_str}\n"
+            f"- Auto-Excluded Leakage Columns: {leak_str}\n\n"
+            "STRICT RULES:\n"
+            "- Only put backticks around exact column names (e.g., `lead_time`). Bold model names like **Random Forest**, **Gradient Boosting**, **Logistic Regression**.\n"
+            "- Include ALL 4 sections: Target & Task Type, Benchmarked AI Models (and winning score if available), Top 5-8 Weighted Columns with exact %, and Auto-Excluded Leakage Columns.\n"
+            "- Format response strictly with:\n"
+            "<<<BRIEF>>>\n"
+            "(1-2 crisp sentences)\n"
+            "<<<DETAILED>>>\n"
+            "(clear Markdown with bullets or a compact weights table)\n"
+        )
+        res = await llm_client.chat_completion(
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.2,
+            max_tokens=900,
+        )
+        tokens_added = res.get("tokens", {}).get("total_tokens", 0)
+        content = res.get("content", "")
+        if res.get("model") != "offline-fallback" and content.strip():
+            parsed_brief, parsed_detailed = _split_brief_detailed(content)
+            # Only accept LLM rewrite if it actually cites at least one model & top column
+            has_model = any(
+                m in content.lower()
+                for m in ["random forest", "gradient boosting", "logistic regression", "ridge", "k-means"]
+            )
+            first_col = facts["top_weights"][0][0].lower() if facts["top_weights"] else ""
+            if has_model and (not first_col or first_col in content.lower()) and parsed_detailed:
+                brief = parsed_brief or brief_fb
+                detailed = parsed_detailed
 
     return {
         "brief_response": brief,
         "detailed_narrative": detailed,
-        "lab_artifact": {"diagnostic": diag, "task_type": task_type},
+        "tokens_used": state.get("tokens_used", 0) + tokens_added,
+        "lab_artifact": {
+            "type": "prediction",
+            "diagnostic": facts["diagnostics"],
+            "task_type": facts["task_type"],
+            "target_column": facts["effective_target"],
+            "top_weights": [
+                {"column": col, "weight_pct": round(float(w) * 100.0, 1)}
+                for col, w in facts["top_weights"][:8]
+            ],
+        },
         "current_step": state["current_step"] + 1,
     }
 
@@ -385,16 +645,31 @@ async def schema_firewall_node(state: AgentState) -> dict[str, Any]:
         "timeseries",
         "time-series",
         "randomforest",
+        "random forest",
+        "randomforestclassifier",
+        "randomforestregressor",
         "gradientboosting",
+        "gradient boosting",
+        "gradientboostingclassifier",
+        "gradientboostingregressor",
         "logisticregression",
+        "logistic regression",
+        "linear regression",
+        "ridge regression",
+        "cross-validation",
         "ridge",
         "kmeans",
+        "k-means",
         "accuracy",
         "rmse",
         "mae",
         "mape",
+        "r2",
         "inertia",
         "roc_auc",
+        "target",
+        "weights",
+        "features",
         "distribution",
         "histogram",
         "scatter",
@@ -444,7 +719,8 @@ async def schema_firewall_node(state: AgentState) -> dict[str, Any]:
             continue
         # If candidate looks like a column identifier (no spaces or typical snake_case)
         if "_" in clean_cand or (clean_cand.isalpha() and len(clean_cand) > 3):
-            if cand_lower not in valid_cols_lower:
+            is_encoded_feature = any(cand_lower.startswith(f"{vc}_") for vc in valid_cols_lower)
+            if cand_lower not in valid_cols_lower and not is_encoded_feature:
                 hallucinations.append(clean_cand)
 
     # Check chart artifact if present

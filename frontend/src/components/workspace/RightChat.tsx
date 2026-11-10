@@ -70,6 +70,17 @@ export function RightChat({ fileId }: RightChatProps) {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatMessages, streamBuffer]);
 
+  useEffect(() => {
+    if (!isChatOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setIsChatOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isChatOpen, setIsChatOpen]);
+
   const refreshEngineStatus = async () => {
     try {
       const st = await api.chat.status();
@@ -234,90 +245,121 @@ export function RightChat({ fileId }: RightChatProps) {
     "How do I use the Predict & Simulate tab?",
   ];
 
-  if (!isChatOpen) {
-    return (
-      <button
-        onClick={() => setIsChatOpen(true)}
-        className="fixed right-6 bottom-6 z-50 flex items-center gap-2.5 px-4 py-2.5 rounded-full bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-semibold text-xs shadow-2xl shadow-emerald-500/30 border border-emerald-400/50 transition-all hover:scale-105 active:scale-95 font-mono cursor-pointer"
-        title="Open AI Analyst Chat"
-      >
-        <MessageSquare className="w-4 h-4 text-zinc-950" />
-        <span>AI Analyst</span>
-        {isStreaming && (
-          <span className="flex h-2 w-2 relative">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-500"></span>
-          </span>
-        )}
-      </button>
-    );
-  }
-
   const isOllamaOnline = engineStatus?.online === true;
 
+  const floatingToggleButton = (
+    <button
+      type="button"
+      onClick={() => setIsChatOpen(!isChatOpen)}
+      data-testid="chat-floating-toggle"
+      aria-label={isChatOpen ? "Hide AI" : "Open AI Analyst Chat"}
+      title={isChatOpen ? "Hide AI Analyst (Esc)" : "Open AI Analyst Chat"}
+      className={`fixed right-6 bottom-4 z-50 flex items-center gap-2 px-4 py-2 rounded-full font-semibold text-xs shadow-2xl border transition-all hover:scale-105 active:scale-95 font-mono cursor-pointer ${
+        isChatOpen
+          ? "bg-zinc-900 hover:bg-zinc-800 text-zinc-200 border-zinc-700 shadow-black/60"
+          : "bg-emerald-500 hover:bg-emerald-400 text-zinc-950 border-emerald-400/50 shadow-emerald-500/30"
+      }`}
+    >
+      {isChatOpen ? (
+        <>
+          <X className="w-3.5 h-3.5 text-zinc-300" />
+          <span>Hide AI</span>
+        </>
+      ) : (
+        <>
+          <MessageSquare className="w-4 h-4 text-zinc-950" />
+          <span>AI Analyst</span>
+          {isStreaming && (
+            <span className="flex h-2 w-2 relative">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-500"></span>
+            </span>
+          )}
+        </>
+      )}
+    </button>
+  );
+
+  if (!isChatOpen) {
+    return floatingToggleButton;
+  }
+
   return (
-    <aside className="w-[440px] max-w-[94vw] fixed right-4 bottom-4 top-16 z-50 flex flex-col rounded-2xl border border-zinc-800 bg-zinc-950/95 backdrop-blur-xl shadow-2xl shadow-black/80 overflow-hidden animate-in fade-in slide-in-from-right-4 duration-200">
-      {/* Chat Top Header */}
-      <div className="p-3.5 border-b border-zinc-800/80 space-y-2 select-none bg-zinc-900/60 shrink-0">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center shrink-0">
-              <BrainCircuit className="w-4 h-4 text-emerald-400" />
+    <>
+      {floatingToggleButton}
+      <aside
+        data-testid="chat-drawer"
+        className="w-[460px] max-w-[94vw] fixed right-4 bottom-16 top-16 z-50 flex flex-col rounded-2xl border border-zinc-800 bg-zinc-950/95 backdrop-blur-xl shadow-2xl shadow-black/80 overflow-hidden animate-in fade-in slide-in-from-right-4 duration-200"
+      >
+        {/* Chat Top Header */}
+        <div className="p-3.5 border-b border-zinc-800/80 space-y-2 select-none bg-zinc-900/60 shrink-0">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <div className="w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center shrink-0">
+                <BrainCircuit className="w-4 h-4 text-emerald-400" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-xs font-mono font-bold text-white flex items-center gap-1.5 min-w-0">
+                  <span className="truncate">DataMind AI Assistant</span>
+                </h3>
+                <span
+                  className="text-[10px] font-mono text-zinc-500 block truncate"
+                  title="Ask about your data, charts, predictions, or how to use this workspace"
+                >
+                  Data, charts, predictions &amp; help
+                </span>
+              </div>
             </div>
-            <div className="min-w-0">
-              <h3 className="text-xs font-mono font-bold text-white flex items-center gap-1.5">
-                <span className="truncate">DataMind AI Assistant</span>
-              </h3>
-              <span className="text-[10px] font-mono text-zinc-500 block truncate max-w-[180px]" title="Ask about your data, charts, predictions, or how to use this workspace">
-                Data, charts, predictions &amp; help
-              </span>
-            </div>
-          </div>
 
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => !isOllamaOnline && setShowMinimalInfo((v) => !v)}
-              className={`flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-mono border transition-colors ${
-                isOllamaOnline
-                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-                  : "border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 cursor-pointer"
-              }`}
-              title={
-                isOllamaOnline
-                  ? `Connected to ${engineStatus?.model}`
-                  : "Click to view Minimal Mode capabilities"
-              }
-            >
-              <span
-                className={`w-1.5 h-1.5 rounded-full ${
-                  isOllamaOnline ? "bg-emerald-400" : "bg-amber-400"
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => !isOllamaOnline && setShowMinimalInfo((v) => !v)}
+                className={`flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-mono border transition-colors truncate max-w-[170px] ${
+                  isOllamaOnline
+                    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                    : "border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 cursor-pointer"
                 }`}
-              />
-              <span className="truncate max-w-[165px]">
-                {engineStatus
-                  ? isOllamaOnline
-                    ? `Ollama Live (${engineStatus.model})`
-                    : "Minimal Mode (DuckDB)"
-                  : "Checking Engine..."}
-              </span>
-              {!isOllamaOnline &&
-                (showMinimalInfo ? (
-                  <ChevronUp className="w-3 h-3 shrink-0" />
-                ) : (
-                  <ChevronDown className="w-3 h-3 shrink-0" />
-                ))}
-            </button>
+                title={
+                  isOllamaOnline
+                    ? `Connected to ${engineStatus?.model}`
+                    : "Click to view Minimal Mode capabilities"
+                }
+              >
+                <span
+                  className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                    isOllamaOnline ? "bg-emerald-400" : "bg-amber-400"
+                  }`}
+                />
+                <span className="truncate">
+                  {engineStatus
+                    ? isOllamaOnline
+                      ? `Ollama Live (${engineStatus.model})`
+                      : "Minimal Mode (DuckDB)"
+                    : "Checking Engine..."}
+                </span>
+                {!isOllamaOnline &&
+                  (showMinimalInfo ? (
+                    <ChevronUp className="w-3 h-3 shrink-0" />
+                  ) : (
+                    <ChevronDown className="w-3 h-3 shrink-0" />
+                  ))}
+              </button>
 
-            <button
-              onClick={() => setIsChatOpen(false)}
-              className="p-1 rounded-md text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
-              title="Minimize Chat"
-            >
-              <X className="w-4 h-4" />
-            </button>
+              <button
+                type="button"
+                onClick={() => setIsChatOpen(false)}
+                aria-label="Hide"
+                title="Hide (Esc)"
+                data-testid="chat-collapse-button"
+                className="flex-shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-mono text-zinc-200 hover:text-white bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 transition-colors cursor-pointer"
+              >
+                <ChevronDown className="w-3.5 h-3.5 shrink-0" />
+                <span>Hide</span>
+                <X className="w-3.5 h-3.5 shrink-0" />
+              </button>
+            </div>
           </div>
-        </div>
 
         {/* Expandable Minimal Mode Capabilities Info Banner */}
         {!isOllamaOnline && showMinimalInfo && (
@@ -493,6 +535,7 @@ export function RightChat({ fileId }: RightChatProps) {
           </button>
         </form>
       </div>
-    </aside>
+      </aside>
+    </>
   );
 }

@@ -63,6 +63,8 @@ PREDICT_KEYWORDS = [
     "increase",
     "decrease",
     "trend",
+    "feature weight",
+    "feature importance",
 ]
 
 VIZ_KEYWORDS = [
@@ -91,7 +93,6 @@ GREETING_REGEX = r"^(hi|hello|hey|yo|greetings|good\s+(morning|afternoon|evening
 PLATFORM_HELP_PATTERNS = [
     r"\b(auto\s*ml|automl|predict\s*&\s*simulate|predict\s+and\s+simulate|smart\s+tables?)\b.*\b(doing|work|use|is|explain|lab|tab)\b",
     r"\b(what|how)\b.*\b(auto\s*ml|automl|forensic|what-if|simulator|sql\s*sandbox|smart\s+tables?|predict\s*&\s*simulate|insights\s*&\s*charts|datamind)\b",
-    r"\bfeature\s+weights?\b.*\b(mean|work|are|explain)\b",
     r"\bhow\s+(do\s+i|to)\s+(use|predict|start|run|analyze)\b",
     r"\bwhat\s+can\s+you\s+do\b",
     r"^help[\s!?.,]*$",

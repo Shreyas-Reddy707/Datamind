@@ -531,3 +531,116 @@ async def test_smart_query_three_modes_and_visual_join(test_user_and_file):
         assert join_res.status_code == 200
         assert join_res.json()["count"] == 3
 
+
+@pytest.mark.asyncio
+async def test_predict_agent_explains_models_and_weights(test_user_and_file):
+    """Verify prediction questions explain benchmarked AI models and dataset feature weights."""
+    user, uf, gf = test_user_and_file
+    active_cols = list(gf.schema_json.get("columns", {}).keys())
+
+    # 1. Classifier routes prediction / feature-weight questions to Tier 3 predict intent
+    for q in [
+        "prediction wt it uses for this data?",
+        "what features drive predictions?",
+        "how does prediction work on this file?",
+    ]:
+        cls_res = ChatClassifier.classify(q, active_cols)
+        assert cls_res["tier"] == 3
+        assert cls_res["intent"] == "prediction"
+
+    # 2. Graph predict_agent_node returns exact benchmarked models & top weighted columns
+    graph = build_agent_graph()
+    profile = DuckDBManager.generate_data_profile(gf.parquet_path)
+    latest_pred_mock = {
+        "id": str(uuid.uuid4()),
+        "task_type": "classification",
+        "target_column": "churn",
+        "best_model_name": "RandomForest",
+        "leaderboard_json": {
+            "test_metric": "accuracy",
+            "test_value": 0.912,
+            "leaderboard": [
+                {"model": "RandomForest", "metric": "accuracy", "cv_mean": 0.915},
+                {"model": "GradientBoosting", "metric": "accuracy", "cv_mean": 0.892},
+                {"model": "LogisticRegression", "metric": "accuracy", "cv_mean": 0.841},
+            ],
+        },
+        "feature_importance_json": {
+            "salary": 0.45,
+            "bonus": 0.31,
+            "department_Sales": 0.14,
+            "performance": 0.10,
+        },
+        "diagnostics_json": {"dropped_leakage_columns": []},
+        "feature_columns": ["salary", "bonus", "department", "performance"],
+    }
+
+    final_state = await graph.ainvoke(
+        {
+            "query": "prediction wt it uses for this data?",
+            "user_id": str(user.id),
+            "user_file_id": str(uf.id),
+            "parquet_path": gf.parquet_path,
+            "schema_json": gf.schema_json,
+            "data_profile": profile,
+            "recent_history": [],
+            "intent": "prediction",
+            "target_columns": [],
+            "latest_prediction": latest_pred_mock,
+            "current_step": 0,
+            "max_steps": 8,
+            "token_budget": 6000,
+            "tokens_used": 0,
+            "brief_response": "",
+            "detailed_narrative": "",
+            "lab_artifact": None,
+            "firewall_passed": False,
+            "firewall_feedback": None,
+            "error": None,
+        }
+    )
+
+    assert final_state["firewall_passed"] is True
+    combined = f"{final_state['brief_response']}\n{final_state['detailed_narrative']}"
+    assert "Random Forest" in combined
+    assert "Gradient Boosting" in combined
+    assert "Logistic Regression" in combined
+    assert "salary" in combined
+    assert "bonus" in combined
+    assert "department" in combined
+    assert "44.5%" in combined
+    assert final_state["lab_artifact"]["type"] == "prediction"
+
+    # 3. Also verify pre-run path (when latest_prediction is None) lists candidate models & correlation drivers
+    prerun_state = await graph.ainvoke(
+        {
+            "query": "what features drive predictions?",
+            "user_id": str(user.id),
+            "user_file_id": str(uf.id),
+            "parquet_path": gf.parquet_path,
+            "schema_json": gf.schema_json,
+            "data_profile": profile,
+            "recent_history": [],
+            "intent": "prediction",
+            "target_columns": [],
+            "latest_prediction": None,
+            "current_step": 0,
+            "max_steps": 8,
+            "token_budget": 6000,
+            "tokens_used": 0,
+            "brief_response": "",
+            "detailed_narrative": "",
+            "lab_artifact": None,
+            "firewall_passed": False,
+            "firewall_feedback": None,
+            "error": None,
+        }
+    )
+    assert prerun_state["firewall_passed"] is True
+    prerun_combined = f"{prerun_state['brief_response']}\n{prerun_state['detailed_narrative']}"
+    assert "Random Forest" in prerun_combined
+    assert "Gradient Boosting" in prerun_combined
+    assert "Logistic Regression" in prerun_combined
+    assert "%" in prerun_combined
+
+
