@@ -71,3 +71,7 @@ class JoinPreviewRequest(BaseModel):
     files: list[JoinFileSpec] = Field(..., min_length=2, max_length=5)
     join_sql: str = Field(..., min_length=5, max_length=2000)
     limit: int = Field(default=50, ge=1, le=100)
+
+
+class SwitchSheetRequest(BaseModel):
+    sheet_name: str = Field(..., min_length=1, max_length=128)

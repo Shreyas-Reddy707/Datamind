@@ -37,6 +37,8 @@ export function CenterLab({ overview, fileId }: CenterLabProps) {
     setActiveLabTab,
     injectedArtifact,
     selectedJoinFileIds,
+    requestedChartOverride,
+    setRequestedChartOverride,
   } = useWorkspaceStore();
 
   // Visualization state
@@ -181,6 +183,23 @@ export function CenterLab({ overview, fileId }: CenterLabProps) {
       setChartSpec(injectedArtifact.data as Record<string, unknown>);
     }
   }, [injectedArtifact]);
+
+  // Handle agentic chart override from chat ui_action
+  useEffect(() => {
+    if (!requestedChartOverride) return;
+    const { chart_type, x_col, y_col, color_col } = requestedChartOverride;
+    const nextType = chart_type || "bar";
+    const nextX = x_col ?? xCol;
+    const nextY = y_col ?? "";
+    const nextColor = color_col ?? "";
+    setSelectedChartType(nextType);
+    setXCol(nextX);
+    setYCol(nextY);
+    setColorCol(nextColor);
+    setRequestedChartOverride(null);
+    handleGenerateChart(nextType, nextX, nextY, nextColor);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestedChartOverride?.nonce]);
 
   const loadPreviewData = async (limit = previewLimit, search = previewSearch) => {
     try {

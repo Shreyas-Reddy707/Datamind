@@ -174,7 +174,7 @@ class UniversalMLRunner:
 
     @classmethod
     def diagnose_data(
-        cls, df: pd.DataFrame, target_col: str | None = None
+        cls, df: pd.DataFrame, target_col: str | None = None, allow_leakage: bool = False
     ) -> dict[str, Any]:
         """Pre-prediction validation to identify blockers, warnings, and suggested targets."""
         blockers: list[str] = []
@@ -218,7 +218,11 @@ class UniversalMLRunner:
                     warnings.append(f"High class imbalance ({ratio:.1f}:1). Utilizing StratifiedKFold.")
 
         effective_target = target_col or suggested_target
-        dropped_leakage = cls.detect_leakage_columns(df, effective_target) if effective_target else []
+        dropped_leakage = (
+            []
+            if allow_leakage or not effective_target
+            else cls.detect_leakage_columns(df, effective_target)
+        )
         if dropped_leakage:
             warnings.append(
                 f"Quarantined {len(dropped_leakage)} target leakage column(s): {', '.join(dropped_leakage)}."
@@ -236,7 +240,7 @@ class UniversalMLRunner:
 
     @classmethod
     def preprocess(
-        cls, df: pd.DataFrame, target_col: str | None, task: str
+        cls, df: pd.DataFrame, target_col: str | None, task: str, allow_leakage: bool = False
     ) -> dict[str, Any]:
         """Data cleaning, null imputation, encoding, scaling, and train-test partitioning."""
         data = df.copy()
@@ -244,8 +248,8 @@ class UniversalMLRunner:
             logger.info("Sampling %d rows down to 10000 for interactive AutoML preprocessing", len(data))
             data = data.sample(n=10000, random_state=42)
 
-        # 0. Detect and quarantine target leakage columns
-        dropped_leakage = cls.detect_leakage_columns(data, target_col)
+        # 0. Detect and quarantine target leakage columns (unless user overrides)
+        dropped_leakage = [] if allow_leakage else cls.detect_leakage_columns(data, target_col)
         if dropped_leakage:
             logger.info("Quarantined %d target leakage columns: %s", len(dropped_leakage), dropped_leakage)
             data.drop(columns=dropped_leakage, inplace=True, errors="ignore")

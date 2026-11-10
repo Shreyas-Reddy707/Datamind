@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class PredictDiagnoseRequest(BaseModel):
     target_col: str | None = Field(default=None, max_length=128)
+    allow_leakage: bool = Field(default=False)
 
 
 class PredictDiagnoseResponse(BaseModel):
@@ -29,12 +30,14 @@ class PredictRunRequest(BaseModel):
         default=None,
         description="Override task mode: classification, regression, clustering, timeseries",
     )
+    allow_leakage: bool = Field(default=False)
 
 
 class PredictSimulateRequest(BaseModel):
     prediction_id: uuid.UUID | None = None
     target_col: str | None = Field(default=None, max_length=128)
     inputs: dict[str, Any] = Field(default_factory=dict)
+    allow_leakage: bool = Field(default=False)
 
 
 class PredictionHistoryResponse(BaseModel):

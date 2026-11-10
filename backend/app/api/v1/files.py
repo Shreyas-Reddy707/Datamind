@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, Header, Query, Request, UploadFile, stat
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.api.deps import get_authorized_user_file, get_current_user
 from app.db.session import get_db
@@ -28,6 +29,7 @@ from app.schemas.files import (
     InstantQueryRequest,
     InstantQueryResponse,
     JoinPreviewRequest,
+    SwitchSheetRequest,
     UserFileListResponse,
     UserFileResponse,
 )
@@ -233,11 +235,16 @@ async def delete_file(
     if global_file:
         global_file.ref_count -= 1
         if global_file.ref_count <= 0:
-            if os.path.exists(global_file.parquet_path):
-                try:
-                    os.remove(global_file.parquet_path)
-                except OSError:
-                    pass
+            paths_to_remove = {global_file.parquet_path}
+            for sh in (global_file.schema_json or {}).get("sheets", []):
+                if isinstance(sh, dict) and sh.get("parquet_path"):
+                    paths_to_remove.add(sh["parquet_path"])
+            for p_rem in paths_to_remove:
+                if p_rem and os.path.exists(p_rem):
+                    try:
+                        os.remove(p_rem)
+                    except OSError:
+                        pass
             await db.delete(global_file)
 
     # 5. Audit log
@@ -303,3 +310,90 @@ async def join_preview(
             error_code="JOIN_EXECUTION_ERROR",
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
+
+
+@router.get("/{file_id}/sheets")
+async def list_file_sheets(
+    user_file: UserFile = Depends(get_authorized_user_file),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return available Excel sheets (if multi-sheet workbook) and related user datasets."""
+    gf = user_file.global_file
+    schema_json = gf.schema_json or {}
+    raw_sheets = schema_json.get("sheets", [])
+    sheets_public = [
+        {
+            "name": s.get("name", f"Sheet {i + 1}"),
+            "row_count": s.get("row_count", gf.row_count),
+            "col_count": s.get("col_count", gf.col_count),
+        }
+        for i, s in enumerate(raw_sheets)
+        if isinstance(s, dict)
+    ]
+    active_sheet = schema_json.get("active_sheet") or (sheets_public[0]["name"] if sheets_public else None)
+
+    related_stmt = (
+        select(UserFile)
+        .options(selectinload(UserFile.global_file))
+        .where(UserFile.user_id == current_user.id)
+        .order_by(UserFile.created_at.desc())
+        .limit(20)
+    )
+    related_files = (await db.scalars(related_stmt)).all()
+    related_public = [
+        {
+            "id": str(rf.id),
+            "display_name": rf.display_name,
+            "row_count": rf.global_file.row_count if rf.global_file else 0,
+            "col_count": rf.global_file.col_count if rf.global_file else 0,
+            "detected_domain": rf.global_file.detected_domain if rf.global_file else "generic",
+        }
+        for rf in related_files
+    ]
+
+    return {
+        "file_id": str(user_file.id),
+        "active_sheet": active_sheet,
+        "sheets": sheets_public,
+        "related_datasets": related_public,
+    }
+
+
+@router.post("/{file_id}/switch-sheet", response_model=UserFileResponse)
+async def switch_file_sheet(
+    req: SwitchSheetRequest,
+    user_file: UserFile = Depends(get_authorized_user_file),
+    db: AsyncSession = Depends(get_db),
+):
+    """Switch the active Excel sheet for a multi-sheet workbook."""
+    gf = user_file.global_file
+    schema_json = dict(gf.schema_json or {})
+    raw_sheets = schema_json.get("sheets", [])
+    target_sheet = next(
+        (s for s in raw_sheets if isinstance(s, dict) and s.get("name") == req.sheet_name),
+        None,
+    )
+    if not target_sheet:
+        raise AppError(
+            message=f"Sheet '{req.sheet_name}' not found in workbook.",
+            error_code="SHEET_NOT_FOUND",
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+
+    sheet_schema = dict(target_sheet.get("schema_json") or {})
+    sheet_schema["active_sheet"] = target_sheet["name"]
+    sheet_schema["sheets"] = raw_sheets
+
+    gf.parquet_path = target_sheet["parquet_path"]
+    gf.row_count = int(target_sheet.get("row_count", gf.row_count))
+    gf.col_count = int(target_sheet.get("col_count", gf.col_count))
+    gf.detected_domain = sheet_schema.get("detected_domain", gf.detected_domain)
+    gf.schema_json = sheet_schema
+    flag_modified(gf, "schema_json")
+
+    await db.commit()
+    await db.refresh(user_file)
+    await db.refresh(gf)
+    user_file.global_file = gf
+    return UserFileResponse.model_validate(user_file)

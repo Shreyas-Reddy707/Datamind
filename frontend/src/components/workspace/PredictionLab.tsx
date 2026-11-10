@@ -5,7 +5,6 @@ import {
   Activity,
   Play,
   CheckCircle2,
-  AlertTriangle,
   XCircle,
   RefreshCw,
   Trophy,
@@ -15,6 +14,8 @@ import {
   TrendingUp,
   TrendingDown,
   Lightbulb,
+  ShieldCheck,
+  X,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { safeFixed, toFiniteNumber } from "@/lib/format";
@@ -25,6 +26,7 @@ import {
   PredictSimulateResponse,
   PredictTaskType,
 } from "@/lib/types";
+import { useWorkspaceStore } from "@/store/useWorkspaceStore";
 import { EmbeddedPlotlyStudio } from "./EmbeddedPlotlyStudio";
 
 interface PredictionLabProps {
@@ -41,6 +43,10 @@ export function PredictionLab({ fileId, columns }: PredictionLabProps) {
   const [activeRun, setActiveRun] = useState<PredictionHistory | null>(null);
   const [history, setHistory] = useState<PredictionHistory[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isHygieneResolved, setIsHygieneResolved] = useState(false);
+  const [allowLeakageOverride, setAllowLeakageOverride] = useState(false);
+
+  const { requestedAutoMLRun, setRequestedAutoMLRun } = useWorkspaceStore();
 
   // What-If Simulation & Embedded Driver Chart State
   const [simulation, setSimulation] = useState<PredictSimulateResponse | null>(null);
@@ -223,12 +229,14 @@ export function PredictionLab({ fileId, columns }: PredictionLabProps) {
     }
   };
 
-  const handleDiagnose = async () => {
+  const handleDiagnose = async (allowLeakageArg?: boolean) => {
+    const useAllowLeakage = allowLeakageArg ?? allowLeakageOverride;
     try {
       setIsDiagnosing(true);
       setErrorMessage(null);
       const res = await api.predict.diagnose(fileId, {
         target_col: selectedTarget || null,
+        allow_leakage: useAllowLeakage,
       });
       setDiagnostics(res);
       if (!selectedTarget && res.suggested_target) {
@@ -241,13 +249,15 @@ export function PredictionLab({ fileId, columns }: PredictionLabProps) {
     }
   };
 
-  const handleStartTraining = async () => {
+  const handleStartTraining = async (targetOverride?: string) => {
+    const targetToRun = targetOverride !== undefined ? targetOverride : selectedTarget;
     try {
       setIsTraining(true);
       setErrorMessage(null);
       const run = await api.predict.run(fileId, {
-        target_col: selectedTarget || null,
+        target_col: targetToRun || null,
         task_type: selectedTaskType,
+        allow_leakage: allowLeakageOverride,
       });
       setActiveRun(run);
       if (run.status === "completed" || run.status === "failed") {
@@ -259,6 +269,32 @@ export function PredictionLab({ fileId, columns }: PredictionLabProps) {
       setErrorMessage(err.message || "Failed to launch training worker.");
     }
   };
+
+  const handleDeleteRun = async (e: React.MouseEvent, runId: string) => {
+    e.stopPropagation();
+    try {
+      await api.predict.delete(runId);
+      const next = history.filter((r) => r.id !== runId);
+      setHistory(next);
+      if (activeRun?.id === runId) {
+        setActiveRun(next[0] || null);
+      }
+    } catch (err) {
+      console.error("Failed to delete prediction run:", err);
+    }
+  };
+
+  // Handle agentic AutoML requests from chat
+  useEffect(() => {
+    if (!requestedAutoMLRun) return;
+    const tCol = requestedAutoMLRun.target_col || undefined;
+    if (tCol) {
+      setSelectedTarget(tCol);
+    }
+    setRequestedAutoMLRun(null);
+    handleStartTraining(tCol);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestedAutoMLRun?.nonce]);
 
   const rawLbJson = activeRun?.leaderboard_json;
   const rawLeaderboard = Array.isArray(rawLbJson)
@@ -332,7 +368,7 @@ export function PredictionLab({ fileId, columns }: PredictionLabProps) {
 
           <div className="flex items-center gap-2">
             <button
-              onClick={handleDiagnose}
+              onClick={() => handleDiagnose()}
               disabled={isDiagnosing || isTraining}
               className="px-3 py-1.5 rounded-lg border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 text-xs font-mono text-zinc-200 transition-colors flex items-center gap-1.5"
             >
@@ -345,7 +381,7 @@ export function PredictionLab({ fileId, columns }: PredictionLabProps) {
             </button>
 
             <button
-              onClick={handleStartTraining}
+              onClick={() => handleStartTraining()}
               disabled={isTraining || isDiagnosing}
               className="px-3.5 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-black text-xs font-semibold font-mono transition-colors flex items-center gap-1.5 shadow-md shadow-emerald-500/10"
             >
@@ -412,29 +448,38 @@ export function PredictionLab({ fileId, columns }: PredictionLabProps) {
             <span className="text-zinc-500 uppercase tracking-wider flex items-center gap-1 mr-1">
               <Clock className="w-3 h-3" /> Runs:
             </span>
-            {history.slice(0, 5).map((run) => {
+            {history.slice(0, 6).map((run) => {
               const isSelected = activeRun?.id === run.id;
               return (
-                <button
+                <div
                   key={run.id}
-                  type="button"
                   onClick={() => setActiveRun(run)}
-                  className={`px-2.5 py-1 rounded-md border transition-colors flex items-center gap-1.5 ${
+                  className={`px-2.5 py-1 rounded-md border transition-colors flex items-center gap-1.5 cursor-pointer ${
                     isSelected
                       ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-300"
-                      : "bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700"
+                      : run.status === "failed"
+                        ? "bg-rose-500/5 border-rose-500/20 text-rose-300 hover:border-rose-500/40"
+                        : "bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700"
                   }`}
                 >
                   <span>{run.target_column || "clustering"}</span>
                   <span className="text-[10px] opacity-75">({run.status})</span>
-                </button>
+                  <button
+                    type="button"
+                    onClick={(e) => handleDeleteRun(e, run.id)}
+                    className="ml-0.5 p-0.5 rounded hover:bg-zinc-800 text-zinc-500 hover:text-rose-400 transition-colors"
+                    title="Delete run"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
               );
             })}
           </div>
         )}
       </div>
 
-      {/* Diagnostics Readiness Panel */}
+      {/* Diagnostics Readiness Panel (non-leakage blockers & advisories only) */}
       {diagnostics && (
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 space-y-3">
           <div className="flex items-center justify-between">
@@ -475,42 +520,110 @@ export function PredictionLab({ fileId, columns }: PredictionLabProps) {
             </div>
           )}
 
-          {diagnostics.warnings.length > 0 && (
-            <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 space-y-1">
-              <span className="text-[11px] font-mono font-bold text-amber-400 uppercase">
-                Warnings / Advisory:
-              </span>
-              <ul className="list-disc list-inside text-xs text-amber-300 space-y-0.5 font-mono">
-                {diagnostics.warnings.map((w, i) => (
-                  <li key={i}>{w}</li>
-                ))}
-              </ul>
-            </div>
-          )}
+          {(() => {
+            const nonLeakageWarnings = diagnostics.warnings.filter(
+              (w) => !w.toLowerCase().startsWith("quarantined ")
+            );
+            if (nonLeakageWarnings.length === 0) return null;
+            return (
+              <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 space-y-1">
+                <span className="text-[11px] font-mono font-bold text-amber-400 uppercase">
+                  Warnings / Advisory:
+                </span>
+                <ul className="list-disc list-inside text-xs text-amber-300 space-y-0.5 font-mono">
+                  {nonLeakageWarnings.map((w, i) => (
+                    <li key={i}>{w}</li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })()}
         </div>
       )}
 
-      {/* Target Leakage Protection Alert / Badge */}
-      {((activeRun?.diagnostics_json as any)?.dropped_leakage_columns?.length > 0 ||
-        (diagnostics?.dropped_leakage_columns && diagnostics.dropped_leakage_columns.length > 0)) && (
-        <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/10 flex items-start gap-3">
-          <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-          <div className="space-y-1 font-mono text-xs">
-            <div className="flex items-center gap-2">
-              <span className="font-bold uppercase text-amber-400">Target Leakage Protection Active</span>
-              <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-semibold border border-amber-500/30">
-                {((activeRun?.diagnostics_json as any)?.dropped_leakage_columns || diagnostics?.dropped_leakage_columns || []).length} Column(s) Quarantined
-              </span>
+      {/* Single Calm Interactive Data Hygiene Resolution Bar */}
+      {(() => {
+        const leakageCols: string[] =
+          diagnostics?.dropped_leakage_columns && diagnostics.dropped_leakage_columns.length > 0
+            ? diagnostics.dropped_leakage_columns
+            : ((activeRun?.diagnostics_json as any)?.dropped_leakage_columns || []);
+        if (leakageCols.length === 0 && !allowLeakageOverride) return null;
+
+        return (
+          <div
+            className={`px-4 py-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 font-mono text-xs transition-colors ${
+              allowLeakageOverride
+                ? "border-amber-500/30 bg-amber-500/10"
+                : isHygieneResolved
+                  ? "border-emerald-500/30 bg-emerald-500/5"
+                  : "border-zinc-700/80 bg-zinc-900/70"
+            }`}
+          >
+            <div className="flex items-start sm:items-center gap-2.5">
+              <ShieldCheck
+                className={`w-4 h-4 shrink-0 mt-0.5 sm:mt-0 ${
+                  allowLeakageOverride ? "text-amber-400" : "text-emerald-400"
+                }`}
+              />
+              {allowLeakageOverride ? (
+                <span className="text-amber-200">
+                  Manual Override Active: Post-outcome columns are currently included in training.
+                </span>
+              ) : (
+                <span className="text-zinc-200">
+                  <span className="text-emerald-400 font-semibold">Auto-Resolved Data Hygiene:</span>{" "}
+                  Excluded{" "}
+                  <span className="text-zinc-100 font-semibold">
+                    [{leakageCols.join(", ")}]
+                  </span>{" "}
+                  to prevent target leakage.
+                </span>
+              )}
             </div>
-            <p className="text-zinc-300 text-[11px] leading-relaxed">
-              Autonomous data integrity quarantined target leakage columns with &gt;0.95 correlation / direct status mirror:{" "}
-              <span className="text-amber-300 font-semibold">
-                {((activeRun?.diagnostics_json as any)?.dropped_leakage_columns || diagnostics?.dropped_leakage_columns || []).join(", ")}
-              </span>.
-            </p>
+
+            <div className="flex items-center gap-2 shrink-0">
+              {!allowLeakageOverride ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setIsHygieneResolved(true)}
+                    className={`px-2.5 py-1 rounded-md border text-[11px] transition-colors flex items-center gap-1 ${
+                      isHygieneResolved
+                        ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-300 font-semibold"
+                        : "bg-zinc-950 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10"
+                    }`}
+                  >
+                    <span>{isHygieneResolved ? "✓ Resolved (Auto-Excluded)" : "✓ Keep Auto-Excluded (Resolved)"}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAllowLeakageOverride(true);
+                      setIsHygieneResolved(false);
+                      handleDiagnose(true);
+                    }}
+                    className="px-2.5 py-1 rounded-md border border-zinc-700 bg-zinc-950 hover:bg-zinc-800 text-zinc-300 text-[11px] transition-colors"
+                  >
+                    Override &amp; Include Column
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAllowLeakageOverride(false);
+                    setIsHygieneResolved(true);
+                    handleDiagnose(false);
+                  }}
+                  className="px-2.5 py-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 text-[11px] transition-colors"
+                >
+                  Restore Auto-Exclusion
+                </button>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Active Run Status Badge */}
       {activeRun && (activeRun.status === "queued" || activeRun.status === "running") && (

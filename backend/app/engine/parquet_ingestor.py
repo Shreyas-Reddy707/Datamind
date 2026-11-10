@@ -186,27 +186,20 @@ class ParquetIngestor:
         }
 
     @classmethod
-    def _process_file_sync(
+    def _clean_and_write_parquet(
         cls,
-        file_bytes: bytes,
+        df: pd.DataFrame,
         clean_filename: str,
         parquet_rel_path: str,
-    ) -> tuple[dict[str, Any], int, int, str]:
-        """Synchronous CPU/disk heavy file parsing and Parquet conversion.
-
-        Executed via asyncio.to_thread to keep FastAPI's event loop fully non-blocking.
-        """
-        df = cls.load_dataframe_from_bytes(file_bytes, clean_filename)
+    ) -> tuple[dict[str, Any], int, int]:
+        """Validate, sanitize columns, normalize mixed types, and write zstd Parquet."""
         post_val = UploadGuard.validate_after_read(df, clean_filename)
         if not post_val["safe"]:
             raise ValueError(post_val["error"])
 
-        # Sanitize columns
         df, _ = InputSanitizer.sanitize_column_names(df)
 
-        # PyArrow Mixed-Type Resilience:
-        # Datasets like hotel_bookings.csv (children, agent, company, country)
-        # contain mixed numeric/string/NULL/NA values causing ArrowTypeError.
+        # PyArrow Mixed-Type Resilience
         for col in df.columns:
             if df[col].dtype == "object":
                 s_cleaned = df[col].replace(["NULL", "null", "NA", "na", "NaN", "None", ""], None)
@@ -221,7 +214,6 @@ class ParquetIngestor:
 
         schema_info = cls.extract_schema_metadata(df)
 
-        # Write Parquet with fallback
         try:
             arrow_table = pa.Table.from_pandas(df, preserve_index=False)
             pq.write_table(arrow_table, parquet_rel_path, compression="zstd")
@@ -232,8 +224,67 @@ class ParquetIngestor:
                     df[col] = df[col].astype(str).replace({"nan": None, "None": None, "<NA>": None})
             df.to_parquet(parquet_rel_path, engine="pyarrow", compression="zstd", index=False)
 
+        return schema_info, len(df), len(df.columns)
+
+    @classmethod
+    def _process_file_sync(
+        cls,
+        file_bytes: bytes,
+        clean_filename: str,
+        parquet_rel_path: str,
+    ) -> tuple[dict[str, Any], int, int, str]:
+        """Synchronous CPU/disk heavy file parsing and Parquet conversion.
+
+        Executed via asyncio.to_thread to keep FastAPI's event loop fully non-blocking.
+        Supports multi-sheet Excel workbooks by persisting each non-empty sheet.
+        """
         ext = os.path.splitext(clean_filename)[1].lstrip(".").lower()
-        return schema_info, len(df), len(df.columns), ext
+
+        if ext in ("xlsx", "xls"):
+            xl = pd.ExcelFile(io.BytesIO(file_bytes))
+            sheet_entries: list[dict[str, Any]] = []
+            primary_schema: dict[str, Any] | None = None
+            primary_rows = 0
+            primary_cols = 0
+            base_path = parquet_rel_path[:-8] if parquet_rel_path.endswith(".parquet") else parquet_rel_path
+
+            for idx, sheet_name in enumerate(xl.sheet_names):
+                try:
+                    sheet_df = xl.parse(sheet_name)
+                except Exception as exc:
+                    logger.debug("Skipping unreadable sheet '%s': %s", sheet_name, exc)
+                    continue
+                if sheet_df.empty or len(sheet_df.columns) == 0:
+                    continue
+
+                is_first = len(sheet_entries) == 0
+                target_path = parquet_rel_path if is_first else f"{base_path}_sheet_{idx}.parquet"
+                s_meta, r_cnt, c_cnt = cls._clean_and_write_parquet(sheet_df, clean_filename, target_path)
+                sheet_entries.append({
+                    "name": str(sheet_name),
+                    "parquet_path": target_path,
+                    "row_count": r_cnt,
+                    "col_count": c_cnt,
+                    "schema_json": s_meta,
+                })
+                if is_first:
+                    primary_schema = dict(s_meta)
+                    primary_rows = r_cnt
+                    primary_cols = c_cnt
+
+            if primary_schema is None:
+                raise ValueError("Uploaded Excel workbook contains no non-empty sheets.")
+
+            if len(sheet_entries) > 1:
+                primary_schema["active_sheet"] = sheet_entries[0]["name"]
+                primary_schema["sheets"] = sheet_entries
+            return primary_schema, primary_rows, primary_cols, ext
+
+        df = cls.load_dataframe_from_bytes(file_bytes, clean_filename)
+        schema_info, row_count, col_count = cls._clean_and_write_parquet(
+            df, clean_filename, parquet_rel_path
+        )
+        return schema_info, row_count, col_count, ext
 
     @classmethod
     async def ingest_file(

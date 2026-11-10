@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import logging
 import math
 import os
@@ -21,6 +22,7 @@ os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
 os.environ["DISABLE_TELEMETRY"] = "TRUE"
 os.environ["LITELLM_TELEMETRY"] = "False"
 
+import httpx
 import litellm
 from litellm import acompletion
 
@@ -62,6 +64,40 @@ class LLMClient:
         target_model = model or self.default_model
         return target_model.startswith("ollama/") and time.time() < self._ollama_chat_unavailable_until
 
+    @staticmethod
+    def _strip_ollama_prefix(model_name: str) -> str:
+        return model_name[7:] if model_name.startswith("ollama/") else model_name
+
+    async def check_ollama_status(self) -> dict[str, Any]:
+        """Probe local Ollama HTTP endpoint (/api/tags) and report live/minimal mode status."""
+        base = self.base_url.rstrip("/")
+        model_bare = self._strip_ollama_prefix(self.default_model)
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(1.5, connect=1.0)) as client:
+                resp = await client.get(f"{base}/api/tags")
+                if resp.status_code == 200:
+                    data = resp.json()
+                    models = [m.get("name", "") for m in data.get("models", []) if isinstance(m, dict)]
+                    self._ollama_chat_unavailable_until = 0.0
+                    self._ollama_embed_unavailable_until = 0.0
+                    return {
+                        "online": True,
+                        "provider": "ollama",
+                        "model": model_bare,
+                        "available_models": models,
+                        "mode_label": f"Ollama Live ({model_bare})",
+                    }
+        except Exception as exc:
+            logger.debug("Ollama status check offline: %s", exc)
+
+        return {
+            "online": False,
+            "provider": "minimal",
+            "model": model_bare,
+            "available_models": [],
+            "mode_label": "Minimal Mode (DuckDB Engine)",
+        }
+
     async def chat_completion(
         self,
         messages: list[dict[str, str]],
@@ -71,38 +107,79 @@ class LLMClient:
         timeout: int | None = None,
         max_retries: int = 2,
     ) -> dict[str, Any]:
-        """Execute chat completion with exponential backoff and offline circuit breaker."""
+        """Execute chat completion via direct httpx for Ollama or LiteLLM for cloud models."""
         target_model = model or self.default_model
         is_ollama = target_model.startswith("ollama/")
-        req_timeout = min(timeout or self.quick_timeout, 2.5) if is_ollama else (timeout or self.quick_timeout)
 
-        if self.is_chat_circuit_open(target_model):
-            return {
-                "content": "",
-                "model": "offline-fallback",
-                "tokens": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
-                "finish_reason": "circuit_open",
-            }
-
-        last_error = None
-        attempts = 1 if is_ollama else (max_retries + 1)
-        for attempt in range(attempts):
+        if is_ollama:
+            if self.is_chat_circuit_open(target_model):
+                return {
+                    "content": "",
+                    "model": "offline-fallback",
+                    "tokens": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+                    "finish_reason": "circuit_open",
+                }
+            base = self.base_url.rstrip("/")
+            bare_model = self._strip_ollama_prefix(target_model)
+            req_timeout = float(timeout or self.quick_timeout)
             try:
-                extra_kwargs = {}
-                if is_ollama:
-                    extra_kwargs["api_base"] = self.base_url
+                async with httpx.AsyncClient(
+                    timeout=httpx.Timeout(req_timeout, connect=1.5)
+                ) as client:
+                    resp = await client.post(
+                        f"{base}/api/chat",
+                        json={
+                            "model": bare_model,
+                            "messages": messages,
+                            "stream": False,
+                            "options": {
+                                "temperature": temperature,
+                                "num_predict": max_tokens,
+                            },
+                        },
+                    )
+                    resp.raise_for_status()
+                    payload = resp.json()
+                    content = (payload.get("message") or {}).get("content", "")
+                    prompt_tokens = int(payload.get("prompt_eval_count", 0) or 0)
+                    completion_tokens = int(payload.get("eval_count", 0) or 0)
+                    return {
+                        "content": content,
+                        "model": target_model,
+                        "tokens": {
+                            "prompt_tokens": prompt_tokens,
+                            "completion_tokens": completion_tokens,
+                            "total_tokens": prompt_tokens + completion_tokens,
+                        },
+                        "finish_reason": payload.get("done_reason", "stop"),
+                    }
+            except Exception as e:
+                self._ollama_chat_unavailable_until = time.time() + 60.0
+                logger.info(
+                    "Local Ollama chat unavailable (%s); activating 60s circuit breaker.",
+                    type(e).__name__,
+                )
+                return {
+                    "content": "",
+                    "model": "offline-fallback",
+                    "tokens": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+                    "finish_reason": "fallback",
+                    "error": str(e),
+                }
 
+        req_timeout = timeout or self.quick_timeout
+        last_error = None
+        for attempt in range(max_retries + 1):
+            try:
                 response = await asyncio.wait_for(
                     acompletion(
                         model=target_model,
                         messages=messages,
                         temperature=temperature,
                         max_tokens=max_tokens,
-                        **extra_kwargs,
                     ),
                     timeout=req_timeout,
                 )
-
                 content = response.choices[0].message.content or ""
                 usage = getattr(response, "usage", None)
                 tokens_info = {
@@ -110,7 +187,6 @@ class LLMClient:
                     "completion_tokens": getattr(usage, "completion_tokens", 0) if usage else 0,
                     "total_tokens": getattr(usage, "total_tokens", 0) if usage else 0,
                 }
-
                 return {
                     "content": content,
                     "model": target_model,
@@ -119,20 +195,8 @@ class LLMClient:
                 }
             except Exception as e:
                 last_error = e
-                if is_ollama:
-                    self._ollama_chat_unavailable_until = time.time() + 60.0
-                    logger.info(
-                        "Local Ollama chat unavailable (%s); activating 60s circuit breaker.",
-                        type(e).__name__,
-                    )
-                    break
-                logger.warning(
-                    "LLM chat attempt %d failed for %s: %s",
-                    attempt + 1,
-                    target_model,
-                    str(e),
-                )
-                if attempt < attempts - 1:
+                logger.warning("LLM chat attempt %d failed for %s: %s", attempt + 1, target_model, str(e))
+                if attempt < max_retries:
                     await asyncio.sleep(0.5 * (2**attempt))
 
         return {
@@ -151,18 +215,53 @@ class LLMClient:
         max_tokens: int = 2048,
         timeout: int | None = None,
     ) -> AsyncGenerator[str, None]:
-        """Stream chat tokens asynchronously for Server-Sent Events (SSE)."""
+        """Stream chat tokens via direct httpx for Ollama or LiteLLM for cloud models."""
         target_model = model or self.default_model
         is_ollama = target_model.startswith("ollama/")
-        req_timeout = min(timeout or self.deep_timeout, 2.5) if is_ollama else (timeout or self.deep_timeout)
 
-        if self.is_chat_circuit_open(target_model):
-            return
-
-        extra_kwargs = {}
         if is_ollama:
-            extra_kwargs["api_base"] = self.base_url
+            if self.is_chat_circuit_open(target_model):
+                return
+            base = self.base_url.rstrip("/")
+            bare_model = self._strip_ollama_prefix(target_model)
+            req_timeout = float(timeout or self.deep_timeout)
+            try:
+                async with httpx.AsyncClient(
+                    timeout=httpx.Timeout(req_timeout, connect=1.5)
+                ) as client:
+                    async with client.stream(
+                        "POST",
+                        f"{base}/api/chat",
+                        json={
+                            "model": bare_model,
+                            "messages": messages,
+                            "stream": True,
+                            "options": {
+                                "temperature": temperature,
+                                "num_predict": max_tokens,
+                            },
+                        },
+                    ) as resp:
+                        resp.raise_for_status()
+                        async for line in resp.aiter_lines():
+                            if not line.strip():
+                                continue
+                            chunk = json.loads(line)
+                            delta = (chunk.get("message") or {}).get("content", "")
+                            if delta:
+                                yield delta
+                            if chunk.get("done"):
+                                break
+                return
+            except Exception as e:
+                self._ollama_chat_unavailable_until = time.time() + 60.0
+                logger.info(
+                    "Local Ollama stream unavailable (%s); activating 60s circuit breaker.",
+                    type(e).__name__,
+                )
+                return
 
+        req_timeout = timeout or self.deep_timeout
         try:
             response = await asyncio.wait_for(
                 acompletion(
@@ -171,51 +270,39 @@ class LLMClient:
                     temperature=temperature,
                     max_tokens=max_tokens,
                     stream=True,
-                    **extra_kwargs,
                 ),
                 timeout=req_timeout,
             )
-
             async for chunk in response:
                 delta = chunk.choices[0].delta.content or ""
                 if delta:
                     yield delta
         except Exception as e:
-            if is_ollama:
-                self._ollama_chat_unavailable_until = time.time() + 60.0
-                logger.info(
-                    "Local Ollama stream unavailable (%s); activating 60s circuit breaker.",
-                    type(e).__name__,
-                )
-            else:
-                logger.warning("Streaming failed for %s: %s.", target_model, e)
+            logger.warning("Streaming failed for %s: %s.", target_model, e)
 
     async def get_embedding(self, text: str) -> list[float]:
         """
         Generate 768-dimensional normalized embedding matching Vector(768).
-        Tries local Ollama/LiteLLM first; falls back to deterministic hash projection with circuit breaker.
+        Tries direct Ollama HTTP embeddings first; falls back to deterministic hash projection with circuit breaker.
         """
         clean_text = text.strip()
         if not clean_text:
             return [0.0] * 768
 
         now = time.time()
-        # Circuit breaker: if Ollama embedding failed within the last 60s, skip immediately
         if now >= self._ollama_embed_unavailable_until:
             try:
-                # Attempt LiteLLM / Ollama embedding
-                emb_model = f"ollama/{settings.EMBEDDING_MODEL}"
-                resp = await asyncio.wait_for(
-                    litellm.aembedding(
-                        model=emb_model,
-                        input=[clean_text],
-                        api_base=self.base_url,
-                    ),
-                    timeout=5,
-                )
-                raw_vec = resp.data[0]["embedding"]
-                if len(raw_vec) == 768:
-                    return self._normalize_vector(raw_vec)
+                base = self.base_url.rstrip("/")
+                async with httpx.AsyncClient(timeout=httpx.Timeout(3.0, connect=1.5)) as client:
+                    resp = await client.post(
+                        f"{base}/api/embeddings",
+                        json={"model": settings.EMBEDDING_MODEL, "prompt": clean_text},
+                    )
+                    if resp.status_code == 200:
+                        raw_vec = resp.json().get("embedding", [])
+                        if isinstance(raw_vec, list) and len(raw_vec) == 768:
+                            return self._normalize_vector(raw_vec)
+                self._ollama_embed_unavailable_until = now + 60.0
             except Exception as exc:
                 self._ollama_embed_unavailable_until = now + 60.0
                 logger.debug(

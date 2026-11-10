@@ -426,6 +426,15 @@ async def schema_firewall_node(state: AgentState) -> dict[str, Any]:
         "none",
         "true",
         "false",
+        "ollama",
+        "minimal",
+        "sheets",
+        "csv",
+        "xlsx",
+        "xls",
+        "file",
+        "files",
+        "global",
     }
 
     for candidate in potential_cols:

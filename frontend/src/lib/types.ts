@@ -17,6 +17,7 @@ export type PredictTaskType =
 
 export interface PredictDiagnoseRequest {
   target_col?: string | null;
+  allow_leakage?: boolean;
 }
 
 export interface PredictDiagnoseResponse {
@@ -33,12 +34,14 @@ export interface PredictDiagnoseResponse {
 export interface PredictRunRequest {
   target_col?: string | null;
   task_type?: PredictTaskType;
+  allow_leakage?: boolean;
 }
 
 export interface PredictSimulateRequest {
   prediction_id?: string | null;
   target_col?: string | null;
   inputs?: Record<string, string | number>;
+  allow_leakage?: boolean;
 }
 
 export interface SimulationControl {
@@ -191,6 +194,34 @@ export interface AnalysisMemory {
   created_at: string;
 }
 
+export interface UiActionEvent {
+  type: "ui_action";
+  action: "switch_tab" | "switch_file" | "switch_sheet" | "update_chart" | "run_automl";
+  payload: Record<string, unknown>;
+  label?: string;
+}
+
+export interface ChatEngineStatus {
+  online: boolean;
+  provider: "ollama" | "minimal";
+  model: string;
+  available_models: string[];
+  mode_label: string;
+}
+
+export interface FileSheetsResponse {
+  file_id: string;
+  active_sheet: string | null;
+  sheets: Array<{ name: string; row_count: number; col_count: number }>;
+  related_datasets: Array<{
+    id: string;
+    display_name: string;
+    row_count: number;
+    col_count: number;
+    detected_domain: string;
+  }>;
+}
+
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant" | "system";
@@ -198,6 +229,7 @@ export interface ChatMessage {
   message_text: string;
   latency_ms?: number;
   created_at: string;
+  actions?: UiActionEvent[];
   artifact?: {
     type: "chart" | "forensic" | "diagnostic" | "prediction";
     data: unknown;

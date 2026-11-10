@@ -83,7 +83,8 @@ class InstantResponder:
             r"list columns",
             r"what columns",
             r"show columns",
-            r"(average|mean|max|min|sum|count|median|stddev)\s+of\s+.+",
+            r"(average|mean|max|min|sum|count|median|stddev)\s+(of\s+)?.+",
+            r"which\s+.+\s+has\s+(the\s+)?(most|highest|largest|top|lowest|least|fewest)",
             r"how many nulls",
             r"missing values",
             r"null values",
@@ -129,7 +130,45 @@ class InstantResponder:
                 "intent": "column_listing",
             }
 
-        # 3. Numeric Aggregations (Average, Mean, Max, Min, Sum, Count, Median, Stddev)
+        # 3. Group-by Aggregation ("average adr by hotel", "mean is_canceled per deposit_type")
+        grp_match = re.search(
+            r"(average|mean|max|min|sum|count|median|stddev)\s+(?:of\s+)?([a-zA-Z0-9_\s]+?)\s+(?:by|per|across|for\s+each)\s+([a-zA-Z0-9_\s]+)",
+            q_lower,
+        )
+        if grp_match:
+            agg_op = grp_match.group(1).strip()
+            metric_raw = grp_match.group(2).strip()
+            group_raw = grp_match.group(3).strip()
+            res_text = cls._handle_grouped_aggregation(conn, agg_op, metric_raw, group_raw, schema_info)
+            if res_text:
+                elapsed = int((time.perf_counter() - start_time) * 1000)
+                return {
+                    "result": res_text,
+                    "latency_ms": elapsed,
+                    "tier": 0,
+                    "intent": f"group_agg_{agg_op}",
+                }
+
+        # 4. Top/Highest/Most Entity Query ("which country has the most cancellations?")
+        top_match = re.search(
+            r"which\s+([a-zA-Z0-9_]+)\s+has\s+(?:the\s+)?(most|highest|largest|top|lowest|least|fewest)\s+(.+)",
+            q_lower,
+        )
+        if top_match:
+            group_raw = top_match.group(1).strip()
+            direction = top_match.group(2).strip()
+            metric_raw = top_match.group(3).strip()
+            res_text = cls._handle_top_group_query(conn, group_raw, direction, metric_raw, schema_info)
+            if res_text:
+                elapsed = int((time.perf_counter() - start_time) * 1000)
+                return {
+                    "result": res_text,
+                    "latency_ms": elapsed,
+                    "tier": 0,
+                    "intent": "top_group",
+                }
+
+        # 5. Numeric Aggregations (Average, Mean, Max, Min, Sum, Count, Median, Stddev)
         agg_match = re.search(
             r"(average|mean|max|min|sum|count|median|stddev)\s+of\s+(.+)", q_lower
         )
@@ -249,6 +288,116 @@ class InstantResponder:
         if isinstance(res, float):
             return f"**{op.capitalize()} {target_col}**: {res:,.2f}"
         return f"**{op.capitalize()} {target_col}**: {res:,}"
+
+    @classmethod
+    def _handle_grouped_aggregation(
+        cls,
+        conn: duckdb.DuckDBPyConnection,
+        op: str,
+        metric_query: str,
+        group_query: str,
+        schema_info: dict[str, Any],
+    ) -> str | None:
+        columns = list(schema_info.get("columns", {}).keys())
+        metric_col = cls._find_column(metric_query, columns)
+        group_col = cls._find_column(group_query, columns)
+        if not metric_col or not group_col:
+            return None
+
+        col_meta = schema_info.get("columns", {}).get(metric_col, {})
+        is_num = col_meta.get("dtype") == "numeric"
+        sql_func_map = {
+            "average": "avg",
+            "mean": "avg",
+            "max": "max",
+            "min": "min",
+            "sum": "sum",
+            "count": "count",
+            "median": "median",
+            "stddev": "stddev",
+        }
+        fn = sql_func_map.get(op, "avg")
+        if fn in ("avg", "sum", "median", "stddev") and not is_num:
+            return f"Column `{metric_col}` is not numeric; showing row counts by `{group_col}` instead."
+
+        esc_m = cls._validate_column_against_schema(metric_col, schema_info)
+        esc_g = cls._validate_column_against_schema(group_col, schema_info)
+        rows = conn.execute(
+            f"SELECT CAST({esc_g} AS VARCHAR) AS grp, count(*) AS cnt, round({fn}({esc_m}), 3) AS val "  # noqa: S608
+            f"FROM dataset WHERE {esc_g} IS NOT NULL GROUP BY 1 ORDER BY val DESC NULLS LAST LIMIT 10"
+        ).fetchall()
+        if not rows:
+            return f"No rows available when grouping `{metric_col}` by `{group_col}`."
+
+        table_lines = [
+            f"### {op.capitalize()} `{metric_col}` by `{group_col}`",
+            "",
+            f"| `{group_col}` | Records | {op.capitalize()} `{metric_col}` |",
+            "| :--- | :--- | :--- |",
+        ]
+        for grp, cnt, val in rows:
+            val_fmt = f"{val:,.3f}" if isinstance(val, float) else f"{val:,}" if val is not None else "N/A"
+            table_lines.append(f"| {grp} | {cnt:,} | {val_fmt} |")
+        return "\n".join(table_lines)
+
+    @classmethod
+    def _handle_top_group_query(
+        cls,
+        conn: duckdb.DuckDBPyConnection,
+        group_query: str,
+        direction: str,
+        metric_query: str,
+        schema_info: dict[str, Any],
+    ) -> str | None:
+        columns = list(schema_info.get("columns", {}).keys())
+        group_col = cls._find_column(group_query, columns)
+        if not group_col:
+            return None
+
+        clean_metric = re.sub(r"[?.,!]", "", metric_query).strip()
+        metric_col = cls._find_column(clean_metric, columns)
+        if not metric_col:
+            for c in columns:
+                c_low = c.lower()
+                if any(word in c_low or c_low in word for word in clean_metric.split() if len(word) > 3):
+                    metric_col = c
+                    break
+
+        esc_g = cls._validate_column_against_schema(group_col, schema_info)
+        order_dir = "ASC" if direction in ("lowest", "least", "fewest") else "DESC"
+
+        if metric_col and schema_info.get("columns", {}).get(metric_col, {}).get("dtype") == "numeric":
+            esc_m = cls._validate_column_against_schema(metric_col, schema_info)
+            rows = conn.execute(
+                f"SELECT CAST({esc_g} AS VARCHAR) AS grp, count(*) AS cnt, "  # noqa: S608
+                f"round(sum({esc_m}), 2) AS total_val, round(avg({esc_m}), 4) AS avg_val "
+                f"FROM dataset WHERE {esc_g} IS NOT NULL GROUP BY 1 ORDER BY total_val {order_dir} NULLS LAST LIMIT 10"
+            ).fetchall()
+            lines = [
+                f"### Top `{group_col}` Breakdown for `{metric_col}`",
+                "",
+                f"| `{group_col}` | Records | Total `{metric_col}` | Avg `{metric_col}` |",
+                "| :--- | :--- | :--- | :--- |",
+            ]
+            for grp, cnt, tot, avg_v in rows:
+                tot_s = f"{tot:,.2f}" if isinstance(tot, (int, float)) else str(tot)
+                avg_s = f"{avg_v:,.4f}" if isinstance(avg_v, (int, float)) else str(avg_v)
+                lines.append(f"| {grp} | {cnt:,} | {tot_s} | {avg_s} |")
+            return "\n".join(lines)
+
+        rows = conn.execute(
+            f"SELECT CAST({esc_g} AS VARCHAR) AS grp, count(*) AS cnt "  # noqa: S608
+            f"FROM dataset WHERE {esc_g} IS NOT NULL GROUP BY 1 ORDER BY cnt {order_dir} LIMIT 10"
+        ).fetchall()
+        lines = [
+            f"### `{group_col}` Frequency Ranking",
+            "",
+            f"| `{group_col}` | Records |",
+            "| :--- | :--- |",
+        ]
+        for grp, cnt in rows:
+            lines.append(f"| {grp} | {cnt:,} |")
+        return "\n".join(lines)
 
     @classmethod
     def _handle_correlation(

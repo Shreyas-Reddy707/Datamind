@@ -1,7 +1,20 @@
 import { create } from "zustand";
-import { ChatMessage, User, UserFile } from "@/lib/types";
+import { ChatMessage, LabChartType, User, UserFile } from "@/lib/types";
 
 export type LabTab = "overview" | "forensic" | "predict" | "sql";
+
+export interface ChartOverrideRequest {
+  chart_type: LabChartType;
+  x_col?: string | null;
+  y_col?: string | null;
+  color_col?: string | null;
+  nonce: number;
+}
+
+export interface AutoMLRunRequest {
+  target_col?: string | null;
+  nonce: number;
+}
 
 export interface WorkspaceState {
   user: User | null;
@@ -19,6 +32,8 @@ export interface WorkspaceState {
   currentAgentStep: string | null;
   activeTier: number | null;
   isChatOpen: boolean;
+  requestedChartOverride: ChartOverrideRequest | null;
+  requestedAutoMLRun: AutoMLRunRequest | null;
 
   // Actions
   setUser: (user: User | null) => void;
@@ -29,6 +44,8 @@ export interface WorkspaceState {
   setActiveLabTab: (tab: LabTab) => void;
   setIsChatOpen: (isOpen: boolean) => void;
   toggleChat: () => void;
+  setRequestedChartOverride: (req: ChartOverrideRequest | null) => void;
+  setRequestedAutoMLRun: (req: AutoMLRunRequest | null) => void;
   injectArtifact: (artifact: {
     type: "chart" | "forensic" | "diagnostic" | "prediction";
     data: unknown;
@@ -57,6 +74,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   currentAgentStep: null,
   activeTier: null,
   isChatOpen: false,
+  requestedChartOverride: null,
+  requestedAutoMLRun: null,
 
   setUser: (user) => set({ user }),
   setActiveFileId: (activeFileId) => set({ activeFileId }),
@@ -71,6 +90,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   setActiveLabTab: (activeLabTab) => set({ activeLabTab }),
   setIsChatOpen: (isChatOpen) => set({ isChatOpen }),
   toggleChat: () => set((state) => ({ isChatOpen: !state.isChatOpen })),
+  setRequestedChartOverride: (requestedChartOverride) => set({ requestedChartOverride }),
+  setRequestedAutoMLRun: (requestedAutoMLRun) => set({ requestedAutoMLRun }),
   injectArtifact: (injectedArtifact) =>
     set({
       injectedArtifact,

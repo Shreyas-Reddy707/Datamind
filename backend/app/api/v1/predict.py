@@ -44,7 +44,9 @@ async def diagnose_ml_viability_endpoint(
     """Evaluate dataset feasibility for machine learning missions."""
     gf = user_file.global_file
     df = await asyncio.to_thread(pd.read_parquet, gf.parquet_path)
-    res = await asyncio.to_thread(UniversalMLRunner.diagnose_data, df, request.target_col)
+    res = await asyncio.to_thread(
+        UniversalMLRunner.diagnose_data, df, request.target_col, request.allow_leakage
+    )
     return res
 
 
@@ -64,7 +66,9 @@ async def run_prediction_mission_endpoint(
     df = await asyncio.to_thread(pd.read_parquet, gf.parquet_path)
 
     # 1. Diagnose viability
-    diag = await asyncio.to_thread(UniversalMLRunner.diagnose_data, df, request.target_col)
+    diag = await asyncio.to_thread(
+        UniversalMLRunner.diagnose_data, df, request.target_col, request.allow_leakage
+    )
     if not diag["can_proceed"]:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -118,6 +122,7 @@ async def run_prediction_mission_endpoint(
             str(record.id),
             str(user_file.id),
             target_col,
+            request.allow_leakage,
         )
     except Exception as e:
         logger.error("Taskiq background queue dispatch failed for prediction %s: %s", record.id, e)
@@ -254,4 +259,26 @@ async def simulate_prediction_outcome_endpoint(
         return res
     except ValueError as ve:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(ve)) from ve
+
+
+@router.delete("/{prediction_id}")
+async def delete_prediction_run_endpoint(
+    prediction_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a prediction history record with strict BOLA ownership enforcement."""
+    stmt = select(PredictionHistory).where(
+        PredictionHistory.id == prediction_id,
+        PredictionHistory.user_id == current_user.id,
+    )
+    job = await db.scalar(stmt)
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Prediction run record not found.",
+        )
+    await db.delete(job)
+    await db.commit()
+    return {"ok": True, "deleted_id": str(prediction_id)}
 

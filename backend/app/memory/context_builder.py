@@ -80,6 +80,7 @@ class ContextBuilder:
         schema_json: dict[str, Any],
         recent_history: list[dict[str, str]],
         target_columns: list[str] | None = None,
+        global_files_summary: str | None = None,
     ) -> str:
         """Minimal fast context package for Tier 2 quick stream responses (<2500 chars)."""
         domain = schema_json.get("detected_domain", "general")
@@ -103,15 +104,17 @@ class ContextBuilder:
         for msg in recent_history[-2:]:
             hist_lines.append(f"{msg.get('role', 'user').capitalize()}: {msg.get('content', '')[:200]}")
         hist_str = "\n".join(hist_lines) if hist_lines else "No previous conversation."
+        global_section = f"## User Workspace Datasets:\n{global_files_summary}\n\n" if global_files_summary else ""
 
         context = (
             f"## ACTIVE DATASET: {domain.upper()} ({row_count:,} rows)\n"
-            f"## Column Schema (Verified):\n{json.dumps(condensed_schema, indent=1)}\n\n"
+            f"## Column Schema (Verified):\n{json.dumps(condensed_schema, separators=(',', ':'))}\n\n"
+            f"{global_section}"
             f"## Recent Context:\n{hist_str}\n\n"
             f"{RESPONSE_STYLE_CONTRACT}\n"
-            "Constraint: Deliver a concise analytical answer in under 4 sentences."
+            "Constraint: Deliver a concise analytical answer with verified metrics."
         )
-        return context[:2500]
+        return context[:1800]
 
     @classmethod
     async def build_tier3_context(

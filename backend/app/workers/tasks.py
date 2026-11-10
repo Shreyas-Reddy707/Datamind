@@ -26,11 +26,12 @@ logger = logging.getLogger("datamind.workers.tasks")
 def _execute_ml_benchmark_sync(
     parquet_path: str,
     target_col: str | None = None,
+    allow_leakage: bool = False,
 ) -> dict[str, Any]:
     """Synchronous CPU-bound pipeline: Parquet read, diagnostic checks, preprocessing, CV & fit."""
     df = pd.read_parquet(parquet_path)
 
-    diag = UniversalMLRunner.diagnose_data(df, target_col)
+    diag = UniversalMLRunner.diagnose_data(df, target_col, allow_leakage=allow_leakage)
     final_target = target_col or diag.get("suggested_target")
     task_type = UniversalMLRunner.auto_select_task(df, final_target)
     if not diag["can_proceed"]:
@@ -41,7 +42,7 @@ def _execute_ml_benchmark_sync(
             "diagnostics": diag,
         }
 
-    prep = UniversalMLRunner.preprocess(df, final_target, task_type)
+    prep = UniversalMLRunner.preprocess(df, final_target, task_type, allow_leakage=allow_leakage)
     if prep.get("dropped_leakage_columns"):
         diag["dropped_leakage_columns"] = prep["dropped_leakage_columns"]
 
@@ -79,6 +80,7 @@ async def run_ml_benchmark_task(
     prediction_id: str,
     user_file_id: str,
     target_col: str | None = None,
+    allow_leakage: bool = False,
 ) -> dict[str, Any]:
     """Execute asynchronous AutoML benchmark mission and persist results to prediction_history."""
     pred_uuid = uuid.UUID(prediction_id)
@@ -105,6 +107,7 @@ async def run_ml_benchmark_task(
                 _execute_ml_benchmark_sync,
                 global_file.parquet_path,
                 target_col,
+                allow_leakage,
             )
 
             pred_record.task_type = bench_res["task_type"]

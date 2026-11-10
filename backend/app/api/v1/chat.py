@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import time
 import uuid
 from collections.abc import AsyncGenerator
@@ -18,6 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.agents.classifier import ChatClassifier
 from app.agents.graph import build_agent_graph
@@ -46,9 +48,192 @@ router = APIRouter(prefix="/chat", tags=["Chat"])
 
 
 def _format_sse(event: str, data: dict | str) -> str:
-    """Format SSE chunk according to text/event-stream specification."""
+    """Format SSE chunk with RFC-compliant multi-line data: line prefixes."""
     data_str = json.dumps(data) if isinstance(data, dict) else str(data)
-    return f"event: {event}\ndata: {data_str}\n\n"
+    data_lines = data_str.split("\n")
+    formatted_data = "\n".join(f"data: {line}" for line in data_lines)
+    return f"event: {event}\n{formatted_data}\n\n"
+
+
+@router.get("/status")
+async def get_chat_engine_status(
+    current_user: User = Depends(get_current_user),
+):
+    """Return live Ollama vs Minimal DuckDB engine availability status."""
+    return await llm_client.check_ollama_status()
+
+
+def _detect_ui_actions(
+    query: str,
+    current_file_id: str,
+    active_columns: list[str],
+    schema_json: dict,
+    all_user_files: list[dict],
+) -> list[dict]:
+    """Detect deterministic agentic UI actions requested by the user."""
+    q_low = query.lower().strip()
+    actions: list[dict] = []
+
+    # 1. File switching
+    if any(k in q_low for k in ["switch to ", "open file ", "open dataset ", "load ", "switch file "]):
+        for uf in all_user_files:
+            if uf["id"] == current_file_id:
+                continue
+            name_low = uf["display_name"].lower()
+            stem = name_low.rsplit(".", 1)[0]
+            if name_low in q_low or (len(stem) >= 3 and stem in q_low):
+                actions.append({
+                    "type": "ui_action",
+                    "action": "switch_file",
+                    "payload": {"file_id": uf["id"], "display_name": uf["display_name"]},
+                    "label": f"Switched dataset to {uf['display_name']}",
+                })
+                return actions
+
+    # 2. Excel sheet switching
+    sheets = [s.get("name", "") for s in (schema_json or {}).get("sheets", []) if isinstance(s, dict)]
+    if sheets and any(k in q_low for k in ["sheet", "tab"]):
+        for sname in sheets:
+            if sname.lower() in q_low:
+                actions.append({
+                    "type": "ui_action",
+                    "action": "switch_sheet",
+                    "payload": {"sheet_name": sname},
+                    "label": f"Switched active sheet to {sname}",
+                })
+                break
+
+    # 3. Tab navigation
+    requested_tab: str | None = None
+    tab_label = ""
+    wants_nav = any(k in q_low for k in ["switch", "go to", "open", "show", "navigate", "take me"])
+    if wants_nav or re.search(r"\b(forensic lab|automl lab|sql sandbox)\b", q_low):
+        if any(k in q_low for k in ["forensic", "forensics", "outlier"]):
+            requested_tab = "forensic"
+            tab_label = "Switched to Forensic Analytics Lab"
+        elif any(k in q_low for k in ["automl", "auto ml", "prediction lab", "what-if"]):
+            requested_tab = "predict"
+            tab_label = "Switched to Predictive AutoML Lab"
+        elif any(k in q_low for k in ["sql", "duckdb"]):
+            requested_tab = "sql"
+            tab_label = "Switched to DuckDB SQL Sandbox"
+        elif any(k in q_low for k in ["overview", "explorer", "data preview"]):
+            requested_tab = "overview"
+            tab_label = "Switched to Overview & Data Explorer"
+
+    # 4. Chart generation / update
+    wants_chart = any(
+        re.search(rf"\b{kw}\b", q_low)
+        for kw in ["plot", "chart", "graph", "visualize", "heatmap", "scatter", "histogram", "boxplot"]
+    )
+    chart_action: dict | None = None
+    if wants_chart:
+        ctype = "bar"
+        for cand_type in ["scatter", "line", "box", "histogram", "heatmap", "correlation", "distribution", "bar"]:
+            if cand_type in q_low:
+                ctype = cand_type
+                break
+
+        # Extract ordered columns from query
+        cols_lower = {c.lower(): c for c in active_columns}
+        by_match = re.search(r"\b([a-zA-Z0-9_]+)\s+(?:by|per|across)\s+([a-zA-Z0-9_]+)\b", q_low)
+        vs_match = re.search(r"\b([a-zA-Z0-9_]+)\s+(?:vs|against|versus|and)\s+([a-zA-Z0-9_]+)\b", q_low)
+
+        x_col = None
+        y_col = None
+        if by_match:
+            m_left = cols_lower.get(by_match.group(1))
+            m_right = cols_lower.get(by_match.group(2))
+            if m_left and m_right:
+                y_col = m_left
+                x_col = m_right
+        elif vs_match:
+            m_left = cols_lower.get(vs_match.group(1))
+            m_right = cols_lower.get(vs_match.group(2))
+            if m_left and m_right:
+                x_col = m_left
+                y_col = m_right
+        else:
+            found_cols = [
+                c for c in active_columns
+                if re.search(rf"\b{re.escape(c.lower())}\b", q_low)
+            ]
+            if len(found_cols) >= 2:
+                x_col, y_col = found_cols[0], found_cols[1]
+            elif len(found_cols) == 1:
+                x_col = found_cols[0]
+                ctype = "distribution" if ctype == "bar" else ctype
+
+        if x_col or ctype in ("heatmap", "correlation"):
+            if not requested_tab:
+                requested_tab = "forensic"
+                tab_label = "Switched to Forensic Analytics Lab"
+            chart_action = {
+                "type": "ui_action",
+                "action": "update_chart",
+                "payload": {
+                    "chart_type": ctype,
+                    "x_col": x_col,
+                    "y_col": y_col,
+                },
+                "label": f"Rendered {ctype.upper()} chart ({x_col or 'Matrix'}{f' vs {y_col}' if y_col else ''})",
+            }
+
+    # 5. AutoML trigger
+    automl_match = re.search(
+        r"\b(?:run\s+automl\s+on|train\s+(?:models?\s+)?(?:on|for)|predict)\s+([a-zA-Z0-9_]+)\b",
+        q_low,
+    )
+    automl_action: dict | None = None
+    if automl_match:
+        cand = automl_match.group(1)
+        matched_col = next((c for c in active_columns if c.lower() == cand), None)
+        if matched_col:
+            requested_tab = "predict"
+            tab_label = "Switched to Predictive AutoML Lab"
+            automl_action = {
+                "type": "ui_action",
+                "action": "run_automl",
+                "payload": {"target_col": matched_col},
+                "label": f"Triggered AutoML benchmark (Target: {matched_col})",
+            }
+
+    if requested_tab:
+        actions.append({
+            "type": "ui_action",
+            "action": "switch_tab",
+            "payload": {"tab": requested_tab},
+            "label": tab_label,
+        })
+    if chart_action:
+        actions.append(chart_action)
+    if automl_action:
+        actions.append(automl_action)
+
+    return actions
+
+
+def _build_global_datasets_response(
+    current_file_id: str,
+    all_user_files: list[dict],
+) -> str:
+    """Format a Markdown overview across all datasets uploaded by the authenticated user."""
+    if not all_user_files:
+        return "You currently have no uploaded datasets in your workspace."
+
+    lines = [
+        f"### Workspace Datasets ({len(all_user_files)} Uploaded)",
+        "",
+        "| Dataset | Rows | Columns | Domain | Status |",
+        "| :--- | :--- | :--- | :--- | :--- |",
+    ]
+    for f in all_user_files:
+        status_tag = "Active" if f["id"] == current_file_id else "Available"
+        lines.append(
+            f"| `{f['display_name']}` | {f['row_count']:,} | {f['col_count']} | {f['domain']} | {status_tag} |"
+        )
+    lines.append("\nYou can ask me to **\"Switch to <filename>\"** anytime to inspect another dataset.")
+    return "\n".join(lines)
 
 
 def _build_customer_help_response(
@@ -117,20 +302,20 @@ def _build_data_aware_fallback(
     valid_cols = list(cols_meta.keys())
     q_low = query.lower()
 
-    # Extract any schema columns referenced in query
-    mentioned = [c for c in valid_cols if c.lower() in q_low]
+    # Extract any schema columns referenced in query by word boundary
+    mentioned = [c for c in valid_cols if re.search(rf"\b{re.escape(c.lower())}\b", q_low)]
     for tc in target_columns:
         if tc in valid_cols and tc not in mentioned:
             mentioned.append(tc)
 
-    # Identify likely outcome column (from latest completed model or common target suffix or last mentioned)
+    # Identify likely outcome column (prefer latest completed model target when relevant, else numeric mentioned or last mentioned)
     outcome_col = None
     if latest_pred and latest_pred.target_column in valid_cols and latest_pred.target_column in mentioned:
         outcome_col = latest_pred.target_column
+    elif latest_pred and latest_pred.target_column in valid_cols and len(mentioned) <= 1:
+        outcome_col = latest_pred.target_column
     elif len(mentioned) >= 2:
         outcome_col = mentioned[-1]
-    elif latest_pred and latest_pred.target_column in valid_cols:
-        outcome_col = latest_pred.target_column
 
     drivers = [c for c in mentioned if c != outcome_col][:3]
     if not drivers and mentioned:
@@ -267,15 +452,83 @@ async def chat_stream_endpoint(
     )
     latest_pred = await db.scalar(latest_pred_stmt)
 
+    # Fetch all datasets owned by current_user for global awareness & switching
+    all_files_stmt = (
+        select(UserFile)
+        .options(selectinload(UserFile.global_file))
+        .where(UserFile.user_id == current_user.id)
+        .order_by(UserFile.created_at.desc())
+        .limit(25)
+    )
+    user_file_rows = (await db.scalars(all_files_stmt)).all()
+    all_user_files = [
+        {
+            "id": str(rf.id),
+            "display_name": rf.display_name,
+            "row_count": rf.global_file.row_count if rf.global_file else 0,
+            "col_count": rf.global_file.col_count if rf.global_file else 0,
+            "domain": rf.global_file.detected_domain if rf.global_file else "generic",
+        }
+        for rf in user_file_rows
+    ]
+    global_files_summary = ", ".join(
+        f"{f['display_name']} ({f['row_count']:,} rows x {f['col_count']} cols)"
+        for f in all_user_files[:8]
+    )
+
+    ui_actions = _detect_ui_actions(
+        request.query,
+        str(user_file.id),
+        active_columns,
+        schema_json,
+        all_user_files,
+    )
+    q_low = request.query.lower()
+    is_global_files_query = any(
+        p in q_low
+        for p in [
+            "what datasets",
+            "which datasets",
+            "list my files",
+            "what files",
+            "which files",
+            "other file",
+            "uploaded files",
+            "all datasets",
+        ]
+    )
+
     async def event_generator() -> AsyncGenerator[str, None]:
         full_response_text = ""
         lab_artifact = None
 
-        # A. Emit Tier Detection Event
+        # A. Emit Tier Detection & Any Agentic UI Actions
         yield _format_sse("tier_detected", {"tier": tier, "intent": intent})
+        for act in ui_actions:
+            yield _format_sse("ui_action", act)
 
-        # B. Route execution based on tier & intent
-        if intent == "help":
+        # B. Route execution based on global query / help / instant / tier
+        if is_global_files_query:
+            yield _format_sse("agent_status", {"status": "Listing workspace datasets...", "step": 1})
+            full_response_text = _build_global_datasets_response(str(user_file.id), all_user_files)
+            yield _format_sse("token", full_response_text)
+
+        elif ui_actions and not InstantResponder.can_handle(request.query) and intent in ("visualization", "analysis", "prediction"):
+            # Direct crisp confirmation + DuckDB visual/statistical backing for UI action commands
+            yield _format_sse("agent_status", {"status": "Executing workspace command...", "step": 1})
+            stats_note = await asyncio.to_thread(
+                _build_data_aware_fallback,
+                request.query,
+                gf.parquet_path,
+                schema_json,
+                classification.get("target_columns", []),
+                latest_pred,
+            )
+            action_lines = "\n".join(f"- ⚡ **Executed**: {a['label']}" for a in ui_actions)
+            full_response_text = f"### Workspace Action Completed\n\n{action_lines}\n\n{stats_note}"
+            yield _format_sse("token", full_response_text)
+
+        elif intent == "help":
             yield _format_sse("agent_status", {"status": "Preparing DataMind guide...", "step": 1})
             full_response_text = _build_customer_help_response(
                 request.query,
@@ -295,8 +548,9 @@ async def chat_stream_endpoint(
                 instant_res = await asyncio.to_thread(
                     InstantResponder.execute, request.query, gf.parquet_path, schema_json
                 )
-                full_response_text = instant_res["result"]
-                if not full_response_text.strip():
+                if instant_res.get("intent") != "unresolved_stat" and instant_res["result"].strip():
+                    full_response_text = instant_res["result"]
+                else:
                     full_response_text = await asyncio.to_thread(
                         _build_data_aware_fallback,
                         request.query,
@@ -323,13 +577,19 @@ async def chat_stream_endpoint(
             else:
                 if not llm_client.is_chat_circuit_open():
                     context = await ContextBuilder.build_tier2_context(
-                        request.query, schema_json, recent_history, classification.get("target_columns")
+                        request.query,
+                        schema_json,
+                        recent_history,
+                        classification.get("target_columns"),
+                        global_files_summary=global_files_summary,
                     )
                     messages = [
                         {"role": "system", "content": context},
                         {"role": "user", "content": request.query},
                     ]
-                    async for chunk in llm_client.stream_chat_completion(messages, timeout=15):
+                    async for chunk in llm_client.stream_chat_completion(
+                        messages, max_tokens=512, timeout=90
+                    ):
                         full_response_text += chunk
                         yield _format_sse("token", chunk)
 

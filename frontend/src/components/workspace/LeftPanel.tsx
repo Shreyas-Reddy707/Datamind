@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { safeFixed, safeLocale } from "@/lib/format";
-import { AnalysisMemory, LabOverviewResponse, UserFile } from "@/lib/types";
+import { AnalysisMemory, FileSheetsResponse, LabOverviewResponse, UserFile } from "@/lib/types";
 import { useWorkspaceStore } from "@/store/useWorkspaceStore";
 
 interface LeftPanelProps {
@@ -40,6 +40,8 @@ export function LeftPanel({ overview, fileId }: LeftPanelProps) {
   const [allFiles, setAllFiles] = useState<UserFile[]>([]);
   const [workspaceFiles, setWorkspaceFiles] = useState<UserFile[]>([]);
   const [memories, setMemories] = useState<AnalysisMemory[]>([]);
+  const [sheetsInfo, setSheetsInfo] = useState<FileSheetsResponse | null>(null);
+  const [isSwitchingSheet, setIsSwitchingSheet] = useState(false);
   const [isSchemaOpen, setIsSchemaOpen] = useState(true);
   const [isJoinsOpen, setIsJoinsOpen] = useState(true);
   const [isMemoriesOpen, setIsMemoriesOpen] = useState(false);
@@ -52,15 +54,30 @@ export function LeftPanel({ overview, fileId }: LeftPanelProps) {
 
   const loadSidebarData = async () => {
     try {
-      const [files, mems] = await Promise.all([
+      const [files, mems, sheets] = await Promise.all([
         api.datasets.list().catch(() => []),
         api.memory.list(fileId).catch(() => []),
+        api.files.sheets(fileId).catch(() => null),
       ]);
       setAllFiles(files);
       setWorkspaceFiles(files.filter((f) => f.id !== fileId));
       setMemories(mems);
+      setSheetsInfo(sheets);
     } catch (err) {
       console.error("Failed to load left panel data:", err);
+    }
+  };
+
+  const handleSwitchSheet = async (sheetName: string) => {
+    if (isSwitchingSheet || sheetsInfo?.active_sheet === sheetName) return;
+    try {
+      setIsSwitchingSheet(true);
+      await api.files.switchSheet(fileId, sheetName);
+      window.location.reload();
+    } catch (err) {
+      console.error("Failed to switch sheet:", err);
+    } finally {
+      setIsSwitchingSheet(false);
     }
   };
 
@@ -147,6 +164,36 @@ export function LeftPanel({ overview, fileId }: LeftPanelProps) {
           )}
         </select>
         {uploadError && <p className="text-[10px] font-mono text-rose-400">{uploadError}</p>}
+
+        {/* Multi-Sheet Excel Switcher Pill Bar */}
+        {sheetsInfo && sheetsInfo.sheets.length > 1 && (
+          <div className="pt-1.5 space-y-1">
+            <span className="text-[10px] font-mono uppercase text-zinc-500 flex items-center gap-1">
+              <Layers className="w-3 h-3 text-cyan-400" />
+              Excel Sheets ({sheetsInfo.sheets.length})
+            </span>
+            <div className="flex flex-wrap gap-1">
+              {sheetsInfo.sheets.map((s) => {
+                const isActiveSheet = sheetsInfo.active_sheet === s.name;
+                return (
+                  <button
+                    key={s.name}
+                    type="button"
+                    disabled={isSwitchingSheet}
+                    onClick={() => handleSwitchSheet(s.name)}
+                    className={`px-2 py-0.5 rounded text-[10px] font-mono border transition-colors ${
+                      isActiveSheet
+                        ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-300 font-semibold"
+                        : "bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700"
+                    }`}
+                  >
+                    {s.name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Dataset Overview Summary */}

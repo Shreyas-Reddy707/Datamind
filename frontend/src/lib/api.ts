@@ -1,5 +1,7 @@
 import {
+  ChatEngineStatus,
   ChatMessage,
+  FileSheetsResponse,
   LabChartType,
   LabOverviewResponse,
   PredictionHistory,
@@ -8,6 +10,7 @@ import {
   PredictRunRequest,
   PredictSimulateRequest,
   PredictSimulateResponse,
+  UiActionEvent,
   User,
   UserFile,
   AnalysisMemory,
@@ -278,6 +281,15 @@ export const api = {
         method: "DELETE",
       });
     },
+    async sheets(fileId: string): Promise<FileSheetsResponse> {
+      return apiFetch<FileSheetsResponse>(`/api/v1/files/${fileId}/sheets`);
+    },
+    async switchSheet(fileId: string, sheetName: string): Promise<UserFile> {
+      return apiFetch<UserFile>(`/api/v1/files/${fileId}/switch-sheet`, {
+        method: "POST",
+        body: JSON.stringify({ sheet_name: sheetName }),
+      });
+    },
   },
 
   // Alias datasets -> files for backward compatibility
@@ -377,9 +389,17 @@ export const api = {
         body: JSON.stringify(payload),
       });
     },
+    async delete(predictionId: string): Promise<{ ok: boolean; deleted_id: string }> {
+      return apiFetch<{ ok: boolean; deleted_id: string }>(`/api/v1/predict/${predictionId}`, {
+        method: "DELETE",
+      });
+    },
   },
 
   chat: {
+    async status(): Promise<ChatEngineStatus> {
+      return apiFetch<ChatEngineStatus>(`/api/v1/chat/status`);
+    },
     async history(fileId: string): Promise<ChatMessage[]> {
       return apiFetch<ChatMessage[]>(`/api/v1/chat/${fileId}/history`);
     },
@@ -388,7 +408,9 @@ export const api = {
       message: string,
       callbacks: {
         onToken: (token: string) => void;
+        onTierDetected?: (info: { tier: number; intent?: string }) => void;
         onArtifact?: (artifact: Record<string, unknown>) => void;
+        onUiAction?: (action: UiActionEvent) => void;
         onDone?: () => void;
         onError?: (err: Error) => void;
       }
@@ -411,12 +433,25 @@ export const api = {
       let hasError = false;
 
       try {
-        const response = await fetch(`${API_BASE_URL}/api/v1/chat/${fileId}/stream`, {
+        let response = await fetch(`${API_BASE_URL}/api/v1/chat/${fileId}/stream`, {
           method: "POST",
           headers,
           body: bodyStr,
           credentials: "include",
         });
+
+        if (response.status === 401) {
+          const refreshed = await refreshAccessToken();
+          if (refreshed) {
+            headers["Authorization"] = `Bearer ${refreshed}`;
+            response = await fetch(`${API_BASE_URL}/api/v1/chat/${fileId}/stream`, {
+              method: "POST",
+              headers,
+              body: bodyStr,
+              credentials: "include",
+            });
+          }
+        }
 
         if (!response.ok) {
           throw new Error(`SSE stream failed with status ${response.status}`);
@@ -457,10 +492,24 @@ export const api = {
 
             if (event === "token" || event === "message") {
               callbacks.onToken(data);
-            } else if (event === "artifact") {
+            } else if (event === "tier_detected") {
+              try {
+                const parsed = JSON.parse(data) as { tier: number; intent?: string };
+                callbacks.onTierDetected?.(parsed);
+              } catch {
+                // ignore
+              }
+            } else if (event === "artifact" || event === "lab_artifact") {
               try {
                 const parsed = JSON.parse(data);
                 callbacks.onArtifact?.(parsed);
+              } catch {
+                // ignore
+              }
+            } else if (event === "ui_action") {
+              try {
+                const parsed = JSON.parse(data) as UiActionEvent;
+                callbacks.onUiAction?.(parsed);
               } catch {
                 // ignore
               }
